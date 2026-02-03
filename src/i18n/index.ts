@@ -13,6 +13,7 @@ const resources = {
         profile: 'PROFILO',
         login: 'ACCEDI',
         logout: 'ESCI',
+        signup: 'REGISTRATI',
       },
       hero: {
         title: 'COD COACHING',
@@ -171,6 +172,7 @@ const resources = {
         profile: 'PROFILE',
         login: 'LOGIN',
         logout: 'LOGOUT',
+        signup: 'SIGN UP',
       },
       hero: {
         title: 'COD COACHING',
