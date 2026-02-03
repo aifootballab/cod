@@ -259,6 +259,7 @@ function App() {
               {[
                 { id: 'home', label: t('nav.home') },
                 { id: 'analyze', label: t('nav.analyze') },
+                { id: 'aimtrainer', label: 'AIM TRAINER' },
                 { id: 'builds', label: t('nav.builds') },
                 { id: 'leaderboard', label: t('nav.leaderboard') },
                 { id: 'profile', label: t('nav.profile') },
