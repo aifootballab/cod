@@ -15,7 +15,10 @@ import {
 } from 'lucide-react';
 import type { Crosshair } from '@/types/aim-trainer';
 import { useAimTrainer } from '@/hooks/useAimTrainer';
+import { useAimTelemetry } from '@/hooks/useAimTelemetry';
 import { GameState, DEFAULT_CONFIG, type JoystickData } from '@/types/aim-trainer';
+import { generateAIAnalysis } from '@/services/ai-analysis';
+import type { AIAnalysisResult } from '@/types/aim-analytics';
 
 interface AimTrainerSectionProps {
   onBack: () => void;
@@ -75,6 +78,40 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
   );
 
   const { gameState, crosshair, targets, score, timeRemaining, session } = state;
+  
+  // Telemetry & AI Analysis
+  const telemetry = useAimTelemetry();
+  const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+
+  // Track crosshair position for telemetry during gameplay
+  useEffect(() => {
+    if (gameState !== GameState.PLAYING) return;
+    
+    const interval = setInterval(() => {
+      telemetry.recordCrosshairPosition(crosshair.x, crosshair.y);
+    }, 50); // 20Hz sampling
+    
+    return () => clearInterval(interval);
+  }, [gameState, crosshair, telemetry]);
+
+  // Start telemetry when game starts
+  useEffect(() => {
+    if (gameState === GameState.PLAYING) {
+      telemetry.startTelemetry();
+      setAiAnalysis(null);
+      setShowAnalysis(false);
+    }
+  }, [gameState, telemetry]);
+
+  // Generate AI analysis when game finishes
+  useEffect(() => {
+    if (gameState === GameState.FINISHED && !aiAnalysis) {
+      const data = telemetry.getTelemetryData();
+      const analysis = generateAIAnalysis(data);
+      setAiAnalysis(analysis);
+    }
+  }, [gameState, telemetry, aiAnalysis]);
 
   // Setup joystick con opzioni ottimizzate per mobile
   useEffect(() => {
@@ -309,12 +346,42 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
     ctx.stroke();
   };
 
-  // Handle shoot
+  // Handle shoot with telemetry
+  const handleShoot = useCallback(() => {
+    const result = actions.shoot();
+    
+    // Registra telemetria dello sparo
+    if (result && gameState === GameState.PLAYING) {
+      // Trova il bersaglio più vicino al mirino
+      let targetX = crosshair.x;
+      let targetY = crosshair.y;
+      
+      if (result.hit && result.targetId) {
+        const target = targets.find(t => t.id === result.targetId);
+        if (target) {
+          targetX = target.x;
+          targetY = target.y;
+        }
+      }
+      
+      telemetry.recordShot(
+        targetX,
+        targetY,
+        crosshair.x,
+        crosshair.y,
+        result.reactionTime,
+        result.hit,
+        dimensions.width,
+        dimensions.height
+      );
+    }
+  }, [actions, gameState, crosshair, targets, telemetry, dimensions]);
+
   const handleCanvasClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    actions.shoot();
-  }, [actions]);
+    handleShoot();
+  }, [handleShoot]);
 
   // Format time
   const formatTime = (seconds: number) => {
@@ -581,75 +648,226 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
               </div>
             )}
 
-            {/* Game Over Screen */}
+            {/* Game Over Screen with AI Analysis */}
             {gameState === GameState.FINISHED && session && (
-              <div className="absolute inset-0 bg-black/95 flex items-center justify-center backdrop-blur-sm overflow-y-auto">
-                <div className="text-center px-4 py-6 w-full max-w-md">
-                  <Award className="w-12 h-12 md:w-16 md:h-16 text-orange-500 mx-auto mb-3" />
-                  <h2 className="text-xl md:text-3xl font-black uppercase mb-1">
-                    <span className="text-orange-600">Sessione</span> Completata
-                  </h2>
-                  <p className="text-zinc-500 text-xs md:text-sm mb-4">Analisi performance in corso...</p>
-                  
-                  <div className="grid grid-cols-2 gap-2 md:gap-4 mb-4">
-                    <div className="bg-zinc-900/80 border border-amber-600/30 p-3 md:p-4 relative">
-                      <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
-                      <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
-                      <div className="text-[10px] md:text-xs text-zinc-400 uppercase">Punteggio</div>
-                      <div className="text-xl md:text-3xl font-mono font-bold text-amber-500">{score}</div>
-                    </div>
-                    <div className="bg-zinc-900/80 border border-amber-600/30 p-3 md:p-4 relative">
-                      <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
-                      <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
-                      <div className="text-[10px] md:text-xs text-zinc-400 uppercase">Precisione</div>
-                      <div className="text-xl md:text-3xl font-mono font-bold text-amber-500">{accuracy}%</div>
-                    </div>
-                    <div className="bg-zinc-900/80 border border-amber-600/30 p-3 md:p-4 relative">
-                      <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
-                      <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
-                      <div className="text-[10px] md:text-xs text-zinc-400 uppercase">Colpiti</div>
-                      <div className="text-xl md:text-3xl font-mono font-bold text-amber-500">{session.targetsHit}</div>
-                    </div>
-                    <div className="bg-zinc-900/80 border border-amber-600/30 p-3 md:p-4 relative">
-                      <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
-                      <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
-                      <div className="text-[10px] md:text-xs text-zinc-400 uppercase">Reazione</div>
-                      <div className="text-xl md:text-3xl font-mono font-bold text-amber-500">{avgReaction}<span className="text-xs md:text-sm">ms</span></div>
-                    </div>
-                  </div>
-
-                  {/* Performance Analysis */}
-                  <div className="bg-zinc-900/50 border border-zinc-700 p-3 rounded mb-4 text-left">
-                    <h3 className="text-amber-500 text-xs uppercase font-bold mb-2 flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4" />
-                      Analisi Performance
-                    </h3>
-                    <ul className="text-xs text-zinc-400 space-y-1">
-                      {accuracy > 80 && <li className="text-green-400">• Eccellente precisione! Prova armi da cecchino</li>}
-                      {accuracy < 50 && <li className="text-yellow-400">• Precisione bassa. Allena con SMG a corto raggio</li>}
-                      {avgReaction < 250 && <li className="text-green-400">• Reazione fulminea! Ottimo per quickscope</li>}
-                      {avgReaction > 400 && <li className="text-yellow-400">• Reazione lenta. Prediligi copertura e posizionamento</li>}
-                      {accuracy >= 50 && accuracy <= 80 && avgReaction >= 250 && avgReaction <= 400 && (
-                        <li className="text-amber-400">• Performance bilanciata. Ottimo per assault rifle</li>
+              <div className="absolute inset-0 bg-black/95 backdrop-blur-sm overflow-y-auto">
+                <div className="min-h-full px-4 py-6 w-full max-w-2xl mx-auto">
+                  {!showAnalysis ? (
+                    // Quick Results Screen
+                    <div className="flex flex-col items-center justify-center min-h-[400px]">
+                      <Award className="w-16 h-16 md:w-20 md:h-20 text-orange-500 mb-4 animate-pulse" />
+                      <h2 className="text-2xl md:text-4xl font-black uppercase mb-2 text-center">
+                        <span className="text-orange-600">Sessione</span> Completata
+                      </h2>
+                      <p className="text-zinc-400 mb-6 text-center">La IA sta analizzando i tuoi dati...</p>
+                      
+                      <div className="grid grid-cols-4 gap-2 w-full max-w-md mb-6">
+                        <div className="bg-zinc-900 border border-amber-600/30 p-3 text-center">
+                          <div className="text-xs text-zinc-500 uppercase">Punti</div>
+                          <div className="text-xl font-bold text-amber-500">{score}</div>
+                        </div>
+                        <div className="bg-zinc-900 border border-amber-600/30 p-3 text-center">
+                          <div className="text-xs text-zinc-500 uppercase">Prec</div>
+                          <div className="text-xl font-bold text-amber-500">{accuracy}%</div>
+                        </div>
+                        <div className="bg-zinc-900 border border-amber-600/30 p-3 text-center">
+                          <div className="text-xs text-zinc-500 uppercase">Colp</div>
+                          <div className="text-xl font-bold text-amber-500">{session.targetsHit}</div>
+                        </div>
+                        <div className="bg-zinc-900 border border-amber-600/30 p-3 text-center">
+                          <div className="text-xs text-zinc-500 uppercase">React</div>
+                          <div className="text-xl font-bold text-amber-500">{avgReaction}ms</div>
+                        </div>
+                      </div>
+                      
+                      {aiAnalysis ? (
+                        <button 
+                          onClick={() => setShowAnalysis(true)}
+                          className="bg-amber-600 hover:bg-amber-700 text-black font-bold px-8 py-3 rounded-lg animate-bounce"
+                        >
+                          <Zap className="w-5 h-5 inline mr-2" />
+                          VEDI ANALISI IA
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 text-amber-500">
+                          <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                          Analisi in corso...
+                        </div>
                       )}
-                    </ul>
-                  </div>
+                    </div>
+                  ) : aiAnalysis ? (
+                    // Detailed AI Analysis
+                    <div className="space-y-4">
+                      {/* Header */}
+                      <div className="text-center mb-6">
+                        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-black text-4xl font-black mb-2">
+                          {aiAnalysis.overallRating}
+                        </div>
+                        <h2 className="text-2xl md:text-3xl font-black uppercase">
+                          <span className="text-orange-600">Analisi</span> Performance
+                        </h2>
+                        <p className="text-zinc-500 text-sm">Generata da Neural AI System</p>
+                      </div>
 
-                  <div className="flex gap-3 justify-center">
-                    <button 
-                      onClick={actions.resetGame}
-                      className="bg-amber-600 hover:bg-amber-700 text-black font-bold px-4 md:px-6 py-2 md:py-3 rounded transition-all active:scale-95"
-                    >
-                      <RotateCcw className="w-4 h-4 md:w-5 md:h-5 inline mr-1 md:mr-2" />
-                      Riprova
-                    </button>
-                    <button 
-                      onClick={onBack}
-                      className="px-4 md:px-6 py-2 md:py-3 border border-amber-600 text-amber-500 hover:bg-amber-600/20 rounded transition-all"
-                    >
-                      Esci
-                    </button>
-                  </div>
+                      {/* Weapon Recommendation */}
+                      <div className="bg-zinc-900 border border-amber-600/30 p-4 rounded-lg">
+                        <h3 className="text-amber-500 text-sm uppercase font-bold mb-3 flex items-center gap-2">
+                          <CrosshairIcon className="w-4 h-4" />
+                          Arma Consigliata
+                        </h3>
+                        <div className="flex items-center gap-4 mb-3">
+                          <div className="text-3xl font-black text-white">
+                            {aiAnalysis.primaryWeapon.weaponName}
+                          </div>
+                          <div className="text-sm bg-amber-600/20 text-amber-500 px-2 py-1 rounded">
+                            {aiAnalysis.primaryWeapon.category}
+                          </div>
+                          <div className="text-sm bg-green-600/20 text-green-500 px-2 py-1 rounded ml-auto">
+                            {aiAnalysis.primaryWeapon.confidence}% match
+                          </div>
+                        </div>
+                        <div className="text-sm text-zinc-400 mb-2">
+                          Stile: <span className="text-amber-500">{aiAnalysis.primaryWeapon.playstyle}</span>
+                        </div>
+                        <ul className="text-xs text-zinc-400 space-y-1 mb-3">
+                          {aiAnalysis.primaryWeapon.reasons.map((reason: string, i: number) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="text-amber-500">→</span> {reason}
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="text-xs">
+                          <span className="text-zinc-500">Attachments suggeriti:</span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {aiAnalysis.primaryWeapon.suggestedAttachments.map((att: string, i: number) => (
+                              <span key={i} className="bg-zinc-800 text-zinc-300 px-2 py-0.5 rounded">
+                                {att}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Settings Recommendation */}
+                      <div className="bg-zinc-900 border border-amber-600/30 p-4 rounded-lg">
+                        <h3 className="text-amber-500 text-sm uppercase font-bold mb-3 flex items-center gap-2">
+                          <Settings className="w-4 h-4" />
+                          Impostazioni Ottimali
+                        </h3>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="bg-black/50 p-3 rounded text-center">
+                            <div className="text-xs text-zinc-500 uppercase mb-1">Sensibilità</div>
+                            <div className="text-2xl font-bold text-amber-500">
+                              {aiAnalysis.settings.sensitivity.suggested}
+                            </div>
+                            <div className="text-[10px] text-zinc-600 line-through">
+                              Attuale: {aiAnalysis.settings.sensitivity.current}
+                            </div>
+                          </div>
+                          {aiAnalysis.settings.adsSensitivity && (
+                            <div className="bg-black/50 p-3 rounded text-center">
+                              <div className="text-xs text-zinc-500 uppercase mb-1">ADS</div>
+                              <div className="text-2xl font-bold text-amber-500">
+                                {aiAnalysis.settings.adsSensitivity.suggested}
+                              </div>
+                            </div>
+                          )}
+                          {aiAnalysis.settings.fov && (
+                            <div className="bg-black/50 p-3 rounded text-center">
+                              <div className="text-xs text-zinc-500 uppercase mb-1">FOV</div>
+                              <div className="text-2xl font-bold text-amber-500">
+                                {aiAnalysis.settings.fov.suggested}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs text-zinc-400 mt-2">
+                          {aiAnalysis.settings.sensitivity.reason}
+                        </p>
+                      </div>
+
+                      {/* Personalized Tips */}
+                      <div className="bg-zinc-900 border border-amber-600/30 p-4 rounded-lg">
+                        <h3 className="text-amber-500 text-sm uppercase font-bold mb-3 flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4" />
+                          Suggerimenti Personalizzati
+                        </h3>
+                        <ul className="text-sm text-zinc-300 space-y-2">
+                          {aiAnalysis.tips.map((tip: string, i: number) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className="text-amber-500 mt-0.5">•</span>
+                              <span>{tip}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {/* Training Focus */}
+                      <div className="bg-zinc-900 border border-amber-600/30 p-4 rounded-lg">
+                        <h3 className="text-amber-500 text-sm uppercase font-bold mb-3 flex items-center gap-2">
+                          <Target className="w-4 h-4" />
+                          Focus Allenamento
+                        </h3>
+                        <div className="flex flex-wrap gap-2">
+                          {aiAnalysis.trainingFocus.map((focus: string, i: number) => (
+                            <span key={i} className="bg-orange-600/20 text-orange-500 px-3 py-1 rounded-full text-sm">
+                              {focus}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Profile Stats */}
+                      <div className="bg-zinc-900 border border-amber-600/30 p-4 rounded-lg">
+                        <h3 className="text-amber-500 text-sm uppercase font-bold mb-3">
+                          Statistiche Dettagliate
+                        </h3>
+                        <div className="grid grid-cols-2 gap-4 text-xs">
+                          <div>
+                            <div className="text-zinc-500">Reazione media</div>
+                            <div className="text-lg text-white">{aiAnalysis.playerProfile.reactionTime.average}ms</div>
+                          </div>
+                          <div>
+                            <div className="text-zinc-500">Reazione più veloce</div>
+                            <div className="text-lg text-green-500">{aiAnalysis.playerProfile.reactionTime.fastest}ms</div>
+                          </div>
+                          <div>
+                            <div className="text-zinc-500">Precisione close range</div>
+                            <div className="text-lg text-white">{aiAnalysis.playerProfile.precision.byDistance.close}%</div>
+                          </div>
+                          <div>
+                            <div className="text-zinc-500">Precisione long range</div>
+                            <div className="text-lg text-white">{aiAnalysis.playerProfile.precision.byDistance.far}%</div>
+                          </div>
+                          <div>
+                            <div className="text-zinc-500">Movimento</div>
+                            <div className="text-lg text-white capitalize">{aiAnalysis.playerProfile.movement.type}</div>
+                          </div>
+                          <div>
+                            <div className="text-zinc-500">Consistenza</div>
+                            <div className="text-lg text-white">{aiAnalysis.playerProfile.movement.consistency}%</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex gap-3 pt-4">
+                        <button 
+                          onClick={actions.resetGame}
+                          className="flex-1 bg-amber-600 hover:bg-amber-700 text-black font-bold px-4 py-3 rounded transition-all active:scale-95"
+                        >
+                          <RotateCcw className="w-4 h-4 inline mr-2" />
+                          Nuovo Allenamento
+                        </button>
+                        <button 
+                          onClick={() => setShowAnalysis(false)}
+                          className="px-4 py-3 border border-amber-600 text-amber-500 hover:bg-amber-600/20 rounded transition-all"
+                        >
+                          Indietro
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}
