@@ -1,9 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { 
   User, Settings, CreditCard, History, Award, Camera, 
   Zap, Shield, Crown, Star, TrendingUp, Package, 
-  CheckCircle, AlertCircle, ChevronRight, Wallet, Lock
+  CheckCircle, ChevronRight, Wallet, Lock
 } from 'lucide-react';
+import { HeroPointsShop } from '@/components/HeroPointsShop';
+import { supabase } from '@/lib/supabase';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface ProfileSettingsProps {
@@ -11,7 +14,7 @@ interface ProfileSettingsProps {
 }
 
 // Mock data per crediti e transazioni
-const MOCK_CREDITS = 2450;
+// MOCK_CREDITS rimosso - uso heroPoints reale dal database
 const MOCK_TRANSACTIONS = [
   { id: '1', type: 'purchase', amount: 1000, cost: 9.99, date: '2024-02-01', status: 'completed' },
   { id: '2', type: 'usage', amount: -50, description: 'Analysis #1234', date: '2024-02-02', status: 'completed' },
@@ -20,29 +23,42 @@ const MOCK_TRANSACTIONS = [
   { id: '5', type: 'purchase', amount: 2000, cost: 19.99, date: '2024-02-05', status: 'completed' },
 ];
 
-// Package crediti disponibili
-const CREDIT_PACKAGES = [
-  { id: 'starter', name: 'STARTER', credits: 500, price: 4.99, popular: false, color: 'from-gray-600 to-gray-700' },
-  { id: 'pro', name: 'PRO', credits: 1500, price: 12.99, popular: true, color: 'from-orange-600 to-amber-600' },
-  { id: 'elite', name: 'ELITE', credits: 5000, price: 39.99, popular: false, color: 'from-purple-600 to-pink-600' },
-  { id: 'legend', name: 'LEGEND', credits: 15000, price: 99.99, popular: false, color: 'from-cyan-600 to-blue-600' },
-];
-
-// Avatar disponibili
-const AVATARS = [
+// Avatar disponibili - funzione per generare in base a heroPoints
+const getAvatars = (hp: number) => [
   { id: 'default', name: 'Operative', icon: User, color: 'text-gray-400', bg: 'bg-gray-800', unlocked: true },
   { id: 'soldier', name: 'Soldier', icon: Shield, color: 'text-green-400', bg: 'bg-green-900/30', unlocked: true },
-  { id: 'elite', name: 'Elite', icon: Star, color: 'text-yellow-400', bg: 'bg-yellow-900/30', unlocked: MOCK_CREDITS >= 1000 },
-  { id: 'commander', name: 'Commander', icon: Crown, color: 'text-purple-400', bg: 'bg-purple-900/30', unlocked: MOCK_CREDITS >= 2000 },
-  { id: 'legend', name: 'Legend', icon: Award, color: 'text-cyan-400', bg: 'bg-cyan-900/30', unlocked: MOCK_CREDITS >= 5000 },
-  { id: 'titan', name: 'Titan', icon: Zap, color: 'text-red-400', bg: 'bg-red-900/30', unlocked: MOCK_CREDITS >= 10000 },
+  { id: 'elite', name: 'Elite', icon: Star, color: 'text-yellow-400', bg: 'bg-yellow-900/30', unlocked: hp >= 1000 },
+  { id: 'commander', name: 'Commander', icon: Crown, color: 'text-purple-400', bg: 'bg-purple-900/30', unlocked: hp >= 2000 },
+  { id: 'legend', name: 'Legend', icon: Award, color: 'text-cyan-400', bg: 'bg-cyan-900/30', unlocked: hp >= 5000 },
+  { id: 'titan', name: 'Titan', icon: Zap, color: 'text-red-400', bg: 'bg-red-900/30', unlocked: hp >= 10000 },
 ];
 
 export function ProfileSettings({ user }: ProfileSettingsProps) {
+  useTranslation(); // i18n hook per futura traduzione
   const [activeTab, setActiveTab] = useState<'overview' | 'credits' | 'avatar' | 'billing'>('overview');
   const [selectedAvatar, setSelectedAvatar] = useState('default');
   const [, setIsUploading] = useState(false);
+  const [heroPoints, setHeroPoints] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch real HP balance
+  useEffect(() => {
+    if (!user) return;
+    
+    const fetchCredits = async () => {
+      const { data } = await supabase
+        .from('user_credits')
+        .select('balance')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (data) {
+        setHeroPoints(data.balance);
+      }
+    };
+    
+    fetchCredits();
+  }, [user]);
 
   if (!user) {
     return (
@@ -89,7 +105,7 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
               <nav className="space-y-1">
                 {[
                   { id: 'overview', label: 'Overview', icon: TrendingUp },
-                  { id: 'credits', label: 'Hero Points', icon: Wallet, badge: MOCK_CREDITS },
+                  { id: 'credits', label: 'Hero Points', icon: Wallet, badge: heroPoints },
                   { id: 'avatar', label: 'Avatar', icon: Camera },
                   { id: 'billing', label: 'Fatturazione', icon: CreditCard },
                 ].map((item) => (
@@ -117,7 +133,7 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
               <div className="mt-6 p-4 bg-gradient-to-br from-orange-500/20 to-amber-500/20 border border-orange-500/30">
                 <p className="text-gray-400 text-xs font-mono mb-1">CREDITI RESIDUI</p>
                 <p className="text-3xl font-black text-orange-400" style={{ fontFamily: 'Black Ops One, cursive' }}>
-                  {MOCK_CREDITS.toLocaleString()}
+                  {heroPoints.toLocaleString()}
                 </p>
                 <p className="text-gray-500 text-xs mt-1">Hero Points</p>
                 <button 
@@ -139,7 +155,7 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
                     { label: 'Analisi Totali', value: '47', icon: TrendingUp, color: 'text-orange-400' },
-                    { label: 'Hero Points', value: MOCK_CREDITS.toLocaleString(), icon: Wallet, color: 'text-yellow-400' },
+                    { label: 'Hero Points', value: heroPoints.toLocaleString(), icon: Wallet, color: 'text-yellow-400' },
                     { label: 'Rank Attuale', value: 'PLATINUM', icon: Award, color: 'text-cyan-400' },
                     { label: 'Membro Dal', value: '2024', icon: Crown, color: 'text-purple-400' },
                   ].map((stat, i) => (
@@ -222,72 +238,9 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
               </div>
             )}
 
-            {/* CREDITS TAB - SHOP */}
+            {/* CREDITS TAB - SHOP REALE */}
             {activeTab === 'credits' && (
-              <div className="space-y-6">
-                <div className="text-center mb-8">
-                  <h2 className="text-3xl font-black text-white mb-2" style={{ fontFamily: 'Black Ops One, cursive' }}>
-                    ACQUISTA <span className="text-orange-500">HERO POINTS</span>
-                  </h2>
-                  <p className="text-gray-500">Ottieni crediti per sbloccare analisi avanzate e avatar esclusivi</p>
-                </div>
-
-                {/* Current Balance */}
-                <div className="p-6 bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/30 text-center">
-                  <p className="text-gray-400 text-sm font-mono mb-2">SALDO ATTUALE</p>
-                  <p className="text-5xl font-black text-orange-400" style={{ fontFamily: 'Black Ops One, cursive' }}>
-                    {MOCK_CREDITS.toLocaleString()}
-                  </p>
-                  <p className="text-gray-500 text-sm mt-1">Hero Points disponibili</p>
-                </div>
-
-                {/* Packages Grid */}
-                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {CREDIT_PACKAGES.map((pkg) => (
-                    <div key={pkg.id} className={`relative border-2 ${pkg.popular ? 'border-orange-500' : 'border-gray-800'} bg-[#111] p-6 flex flex-col`}>
-                      {pkg.popular && (
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-orange-500 text-black text-xs font-bold font-mono">
-                          POPOLARE
-                        </div>
-                      )}
-                      
-                      <div className={`w-12 h-12 bg-gradient-to-br ${pkg.color} flex items-center justify-center mb-4`}>
-                        <Wallet className="w-6 h-6 text-white" />
-                      </div>
-                      
-                      <h3 className="text-xl font-black text-white mb-1" style={{ fontFamily: 'Black Ops One, cursive' }}>
-                        {pkg.name}
-                      </h3>
-                      <p className="text-3xl font-bold text-orange-400 mb-4">
-                        {pkg.credits.toLocaleString()}
-                        <span className="text-sm text-gray-500 block font-normal">Hero Points</span>
-                      </p>
-                      
-                      <div className="mt-auto">
-                        <p className="text-2xl font-bold text-white mb-4">€{pkg.price}</p>
-                        <button className={`w-full py-3 font-bold font-mono transition-colors ${
-                          pkg.popular 
-                            ? 'bg-orange-500 text-black hover:bg-orange-400' 
-                            : 'border border-gray-600 text-gray-300 hover:border-orange-500 hover:text-orange-500'
-                        }`}>
-                          ACQUISTA
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Info Box */}
-                <div className="p-4 border border-gray-800 bg-[#111] flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-gray-300 text-sm">
-                      <strong className="text-white">Come funziona:</strong> Ogni analisi completa consuma 50 Hero Points. 
-                      I crediti non hanno scadenza e possono essere utilizzati in qualsiasi momento.
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <HeroPointsShop user={user} currentBalance={heroPoints} />
             )}
 
             {/* AVATAR TAB */}
@@ -304,7 +257,7 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
                 <div className="p-8 border border-orange-500/30 bg-gradient-to-b from-orange-500/10 to-transparent text-center">
                   <p className="text-gray-400 text-sm font-mono mb-4">AVATAR ATTUALE</p>
                   {(() => {
-                    const avatar = AVATARS.find(a => a.id === selectedAvatar);
+                    const avatar = getAvatars(heroPoints).find(a => a.id === selectedAvatar);
                     if (!avatar) return null;
                     return (
                       <div className="flex flex-col items-center">
@@ -324,7 +277,7 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
 
                 {/* Avatar Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {AVATARS.map((avatar) => (
+                  {getAvatars(heroPoints).map((avatar) => (
                     <button
                       key={avatar.id}
                       onClick={() => avatar.unlocked && setSelectedAvatar(avatar.id)}
@@ -372,10 +325,10 @@ export function ProfileSettings({ user }: ProfileSettingsProps) {
                   />
                   <button 
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={MOCK_CREDITS < 5000}
+                    disabled={heroPoints < 5000}
                     className="px-6 py-2 border border-gray-600 text-gray-400 font-mono text-sm hover:border-orange-500 hover:text-orange-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {MOCK_CREDITS < 5000 ? 'Richiede 5000 HP' : 'SELEZIONA FILE'}
+                    {heroPoints < 5000 ? 'Richiede 5000 HP' : 'SELEZIONA FILE'}
                   </button>
                 </div>
               </div>
