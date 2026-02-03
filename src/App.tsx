@@ -9,6 +9,7 @@ import { ProfileSection } from '@/sections/ProfileSection';
 import { ProfileSettings } from '@/sections/ProfileSettings';
 import { BuildsSection } from '@/sections/BuildsSection';
 import { LoginPage } from '@/sections/LoginPage';
+import { DemoSection } from '@/sections/DemoSection';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { weaponBuilds } from '@/data/weaponDatabase';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -108,6 +109,7 @@ function App() {
         return (
           <>
             <HeroSection onScrollToUpload={scrollToUpload} />
+            <DemoSection onStartTrial={() => setCurrentView('analyze')} />
             <div ref={uploadRef}>
               {!showResults ? (
                 <UploadSection 
