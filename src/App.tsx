@@ -10,6 +10,7 @@ import { ProfileSettings } from '@/sections/ProfileSettings';
 import { BuildsSection } from '@/sections/BuildsSection';
 import { LoginPage } from '@/sections/LoginPage';
 import { DemoSection } from '@/sections/DemoSection';
+import { AimTrainerSection } from '@/sections/AimTrainerSection';
 import { InteractiveTour, useTour } from '@/components/InteractiveTour';
 import { useAnalysis } from '@/hooks/useAnalysis';
 // Weapon database imported in BuildsSection
@@ -18,7 +19,7 @@ import { supabase } from '@/lib/supabase';
 import { Crosshair, Menu, X, User, LogOut, Zap } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
-type View = 'home' | 'analyze' | 'builds' | 'leaderboard' | 'profile' | 'settings';
+type View = 'home' | 'analyze' | 'builds' | 'leaderboard' | 'profile' | 'settings' | 'aimtrainer';
 
 function App() {
   const { t } = useTranslation();
@@ -154,6 +155,8 @@ function App() {
         return <ProfileSection user={user} profile={profile} onStartAnalysis={scrollToUpload} />;
       case 'settings':
         return <ProfileSettings user={user} />;
+      case 'aimtrainer':
+        return <AimTrainerSection onBack={() => setCurrentView('home')} />;
       default:
         return null;
     }
@@ -185,6 +188,7 @@ function App() {
               {[
                 { id: 'home', label: t('nav.home') },
                 { id: 'analyze', label: t('nav.analyze') },
+                { id: 'aimtrainer', label: 'AIM TRAINER' },
                 { id: 'builds', label: t('nav.builds') },
                 { id: 'leaderboard', label: t('nav.leaderboard') },
               ].map((item) => (
