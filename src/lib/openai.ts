@@ -7,10 +7,16 @@ import type { PlayerStats, WeaponBuild } from '@/types';
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
+export interface OCRResult {
+  is_valid: boolean;
+  stats?: Partial<PlayerStats>;
+  error?: string;
+}
+
 // OCR: Extract stats from screenshot using GPT-4 Vision
-export const extractStatsFromImage = async (imageBase64: string): Promise<Partial<PlayerStats>> => {
+export const extractStatsFromImage = async (imageBase64: string): Promise<OCRResult> => {
   if (!OPENAI_API_KEY) {
-    throw new Error('OpenAI API key not configured');
+    throw new Error('OpenAI API key not configured. Add VITE_OPENAI_API_KEY to .env');
   }
 
   const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
@@ -24,31 +30,42 @@ export const extractStatsFromImage = async (imageBase64: string): Promise<Partia
       messages: [
         {
           role: 'system',
-          content: `You are a Call of Duty stats extractor. Extract player statistics from the screenshot.
-          Return ONLY a JSON object with these fields:
-          - kd_ratio: number (e.g., 1.25)
-          - accuracy: number (percentage, e.g., 24.5)
-          - spm: number (score per minute, e.g., 320)
-          - win_rate: number (percentage, e.g., 52.3)
-          - total_kills: number
-          - total_deaths: number
-          - headshot_percent: number
-          - play_time_hours: number
-          - best_weapon: string
-          - level: number
+          content: `You are a Call of Duty stats extractor. Analyze the image carefully.
           
-          If a value is not visible, use reasonable estimates based on other stats.
-          Return ONLY the JSON, no other text.`
+IMPORTANT RULES:
+1. First, determine if this is ACTUALLY a Call of Duty screenshot showing player statistics
+2. If it's NOT a COD screenshot (e.g., random photo, different game, meme, etc.), return: {"is_valid": false, "error": "This doesn't appear to be a Call of Duty screenshot. Please upload a valid screenshot showing your player stats."}
+3. If it IS a COD screenshot but stats are unclear/partial, return: {"is_valid": false, "error": "Could not read stats clearly. Please upload a clearer screenshot of your Call of Duty stats page."}
+4. Only return is_valid: true if you are confident this is a COD screenshot with readable stats
+
+For VALID COD screenshots, return:
+{
+  "is_valid": true,
+  "stats": {
+    "kd_ratio": number,
+    "accuracy": number,
+    "spm": number,
+    "win_rate": number,
+    "total_kills": number,
+    "total_deaths": number,
+    "headshot_percent": number,
+    "play_time_hours": number,
+    "best_weapon": string,
+    "level": number
+  }
+}
+
+Do NOT estimate or invent values. If a value is not visible in the screenshot, use null.`
         },
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Extract all player statistics from this Call of Duty screenshot.' },
+            { type: 'text', text: 'Is this a valid Call of Duty screenshot with player statistics? Extract only real, visible stats.' },
             { type: 'image_url', image_url: { url: imageBase64 } }
           ]
         }
       ],
-      max_tokens: 500,
+      max_tokens: 800,
       temperature: 0.1,
     }),
   });
@@ -64,10 +81,63 @@ export const extractStatsFromImage = async (imageBase64: string): Promise<Partia
   // Extract JSON from response
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    throw new Error('Could not parse stats from image');
+    return { is_valid: false, error: 'Could not parse response from AI' };
   }
   
-  return JSON.parse(jsonMatch[0]);
+  const result = JSON.parse(jsonMatch[0]);
+  
+  // Validate the result structure
+  if (!result.is_valid) {
+    return { is_valid: false, error: result.error || 'Invalid screenshot' };
+  }
+  
+  // Check if we have actual stats
+  if (!result.stats || Object.keys(result.stats).length === 0) {
+    return { is_valid: false, error: 'No stats detected in screenshot' };
+  }
+  
+  return { is_valid: true, stats: result.stats };
+};
+
+// Validate that extracted stats look realistic
+export const validateStats = (stats: Partial<PlayerStats>): { valid: boolean; error?: string } => {
+  const errors: string[] = [];
+  
+  if (stats.kd_ratio !== undefined && stats.kd_ratio !== null) {
+    if (stats.kd_ratio < 0 || stats.kd_ratio > 50) {
+      errors.push(`K/D ratio (${stats.kd_ratio}) seems unrealistic`);
+    }
+  }
+  
+  if (stats.accuracy !== undefined && stats.accuracy !== null) {
+    if (stats.accuracy < 0 || stats.accuracy > 100) {
+      errors.push(`Accuracy (${stats.accuracy}%) must be between 0-100`);
+    }
+  }
+  
+  if (stats.spm !== undefined && stats.spm !== null) {
+    if (stats.spm < 0 || stats.spm > 2000) {
+      errors.push(`SPM (${stats.spm}) seems unrealistic`);
+    }
+  }
+  
+  if (stats.win_rate !== undefined && stats.win_rate !== null) {
+    if (stats.win_rate < 0 || stats.win_rate > 100) {
+      errors.push(`Win rate (${stats.win_rate}%) must be between 0-100`);
+    }
+  }
+  
+  // Check if at least some key stats are present
+  const hasAnyStats = stats.kd_ratio !== null || stats.accuracy !== null || stats.spm !== null;
+  if (!hasAnyStats) {
+    return { valid: false, error: 'No valid statistics found in the screenshot' };
+  }
+  
+  if (errors.length > 0) {
+    return { valid: false, error: errors.join(', ') };
+  }
+  
+  return { valid: true };
 };
 
 // Generate embedding for RAG search
@@ -142,7 +212,7 @@ Format response as JSON:
       messages: [
         {
           role: 'system',
-          content: 'You are an expert Call of Duty coach. Provide concise, actionable tactical advice.'
+          content: 'You are an expert Call of Duty coach. Provide concise, actionable tactical advice based on REAL player statistics.'
         },
         { role: 'user', content: prompt }
       ],
@@ -153,7 +223,7 @@ Format response as JSON:
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`OpenAI API error: ${error}`);
+    throw new Error(`OpenAI API key invalid or quota exceeded: ${error}`);
   }
 
   const data = await response.json();
@@ -163,7 +233,7 @@ Format response as JSON:
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     return {
-      analysis: 'Performance analysis completed. Review your stats and recommended builds.',
+      analysis: `Performance analysis for K/D ${stats.kd_ratio}, Accuracy ${stats.accuracy}%.`,
       tips: [
         'Practice aim training daily',
         'Review map positioning',

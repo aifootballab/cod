@@ -25,7 +25,7 @@ function App() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<{ username: string; rank: string } | null>(null);
   
-  const { analysis, isAnalyzing, progress, getStageText, startAnalysis, resetAnalysis } = useAnalysis({ userId: user?.id });
+  const { analysis, isAnalyzing, progress, stage, error, getStageText, startAnalysis, resetAnalysis } = useAnalysis({ userId: user?.id });
 
   // Check auth on mount
   useEffect(() => {
@@ -85,6 +85,7 @@ function App() {
                   isAnalyzing={isAnalyzing} 
                   progress={progress}
                   stageText={getStageText()}
+                  error={error}
                 />
               ) : analysis ? (
                 <ResultsSection analysis={analysis} onNewAnalysis={handleNewAnalysis} />

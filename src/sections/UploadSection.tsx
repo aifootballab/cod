@@ -1,14 +1,15 @@
 import { useCallback, useRef, useState } from 'react';
-import { Upload, X, Image as ImageIcon, Scan, Cpu, Database, FileCheck } from 'lucide-react';
+import { Upload, X, Image as ImageIcon, Scan, Cpu, Database, FileCheck, AlertTriangle } from 'lucide-react';
 
 interface UploadSectionProps {
   onAnalysisStart: (file: File) => void;
   isAnalyzing: boolean;
   progress: number;
   stageText: string;
+  error?: string | null;
 }
 
-export function UploadSection({ onAnalysisStart, isAnalyzing, progress, stageText }: UploadSectionProps) {
+export function UploadSection({ onAnalysisStart, isAnalyzing, progress, stageText, error }: UploadSectionProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -157,7 +158,22 @@ export function UploadSection({ onAnalysisStart, isAnalyzing, progress, stageTex
                   </span>
                 </div>
                 
-                {isAnalyzing ? (
+                {error ? (
+                  // Error State
+                  <div className="max-w-md mx-auto p-6 border border-red-500/30 bg-red-500/5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <AlertTriangle className="w-8 h-8 text-red-500" />
+                      <h4 className="text-red-400 font-bold tracking-wider">ANALISI FALLITA</h4>
+                    </div>
+                    <p className="text-gray-400 text-sm mb-4">{error}</p>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleClear(); }}
+                      className="px-6 py-2 border border-red-500/50 text-red-400 hover:bg-red-500/10 transition-colors font-mono text-sm"
+                    >
+                      RIPROVA
+                    </button>
+                  </div>
+                ) : isAnalyzing ? (
                   // Analysis Progress
                   <div className="max-w-md mx-auto">
                     <div className="flex items-center justify-between mb-3">

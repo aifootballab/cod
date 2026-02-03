@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { Analysis, PlayerStats, WeaponBuild } from '@/types';
-import { extractStatsFromImage, generateAIAnalysis, findBestBuildsWithAI } from '@/lib/openai';
-// import { uploadScreenshot } from '@/lib/supabase';
+import { extractStatsFromImage, generateAIAnalysis, findBestBuildsWithAI, validateStats } from '@/lib/openai';
 import { detectPlaystyle } from '@/data/weaponDatabase';
 
 interface UseAnalysisOptions {
@@ -12,7 +11,7 @@ export function useAnalysis(options: UseAnalysisOptions = {}) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [stage, setStage] = useState<'idle' | 'upload' | 'ocr' | 'ai' | 'rag' | 'save' | 'complete'>('idle');
+  const [stage, setStage] = useState<'idle' | 'upload' | 'ocr' | 'ai' | 'rag' | 'save' | 'complete' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
 
   const startAnalysis = useCallback(async (file: File, allBuilds: WeaponBuild[]) => {
@@ -21,12 +20,8 @@ export function useAnalysis(options: UseAnalysisOptions = {}) {
     setError(null);
     
     try {
-      // Stage 1: Upload (0-15%) - commented until Supabase storage is configured
+      // Stage 1: Upload (0-15%)
       setStage('upload');
-      // if (options.userId) {
-      //   const { data, error: uploadError } = await uploadScreenshot(file, options.userId);
-      //   if (uploadError) throw uploadError;
-      // }
       setProgress(15);
       
       // Stage 2: OCR with OpenAI (15-50%)
@@ -37,26 +32,42 @@ export function useAnalysis(options: UseAnalysisOptions = {}) {
         reader.readAsDataURL(file);
       });
       
-      const extractedStats = await extractStatsFromImage(imageBase64);
+      // Extract stats from image
+      const ocrResult = await extractStatsFromImage(imageBase64);
+      
+      // Check if valid COD screenshot
+      if (!ocrResult.is_valid) {
+        throw new Error(ocrResult.error || 'Invalid screenshot');
+      }
+      
+      // Validate extracted stats
+      const validation = validateStats(ocrResult.stats || {});
+      if (!validation.valid) {
+        throw new Error(validation.error || 'Invalid stats detected');
+      }
+      
+      const extractedStats = ocrResult.stats!;
       setProgress(50);
       
       // Stage 3: AI Analysis (50-70%)
       setStage('ai');
+      
+      // Build player stats object - NO FAKE DEFAULTS
       const playerStats: PlayerStats = {
-        kd_ratio: extractedStats.kd_ratio || 1.0,
-        accuracy: extractedStats.accuracy || 20,
-        spm: extractedStats.spm || 250,
-        win_rate: extractedStats.win_rate || 50,
-        total_kills: extractedStats.total_kills || 5000,
-        total_deaths: extractedStats.total_deaths || 5000,
-        headshot_percent: extractedStats.headshot_percent || 15,
-        play_time_hours: extractedStats.play_time_hours || 100,
-        best_weapon: extractedStats.best_weapon || 'MCW',
-        level: extractedStats.level || 55,
+        kd_ratio: extractedStats.kd_ratio ?? 0,
+        accuracy: extractedStats.accuracy ?? 0,
+        spm: extractedStats.spm ?? 0,
+        win_rate: extractedStats.win_rate ?? 0,
+        total_kills: extractedStats.total_kills ?? 0,
+        total_deaths: extractedStats.total_deaths ?? 0,
+        headshot_percent: extractedStats.headshot_percent ?? 0,
+        play_time_hours: extractedStats.play_time_hours ?? 0,
+        best_weapon: extractedStats.best_weapon || 'Unknown',
+        level: extractedStats.level ?? 0,
         playstyle_detected: detectPlaystyle({
-          kd_ratio: extractedStats.kd_ratio || 1.0,
-          accuracy: extractedStats.accuracy || 20,
-          spm: extractedStats.spm || 250,
+          kd_ratio: extractedStats.kd_ratio ?? 0,
+          accuracy: extractedStats.accuracy ?? 0,
+          spm: extractedStats.spm ?? 0,
         }),
       };
       
@@ -79,17 +90,13 @@ export function useAnalysis(options: UseAnalysisOptions = {}) {
         created_at: new Date().toISOString(),
       };
       
-      // Save to database (commented until Supabase is configured)
-      // if (options.userId) {
-      //   await supabase.from('analyses').insert({...});
-      // }
-      
       setProgress(100);
       setStage('complete');
       setAnalysis(newAnalysis);
       
     } catch (err) {
       console.error('Analysis error:', err);
+      setStage('error');
       setError(err instanceof Error ? err.message : 'Analysis failed');
     } finally {
       setIsAnalyzing(false);
@@ -111,6 +118,7 @@ export function useAnalysis(options: UseAnalysisOptions = {}) {
       case 'rag': return 'RAG SEARCHING BUILDS...';
       case 'save': return 'SAVING RESULTS...';
       case 'complete': return 'COMPLETE!';
+      case 'error': return 'ERROR';
       default: return 'INITIALIZING...';
     }
   };
