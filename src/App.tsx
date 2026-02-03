@@ -108,7 +108,11 @@ function App() {
       case 'home':
         return (
           <>
-            <HeroSection onScrollToUpload={scrollToUpload} />
+            <HeroSection 
+              onScrollToUpload={scrollToUpload} 
+              onNavigate={(view) => setCurrentView(view as View)}
+              isAuthenticated={!!user}
+            />
             <DemoSection onStartTrial={() => setCurrentView('analyze')} />
             <div ref={uploadRef}>
               {!showResults ? (
