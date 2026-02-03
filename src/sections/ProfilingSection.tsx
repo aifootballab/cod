@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { User, Target, Zap, Trophy, TrendingUp, Users, Brain, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { PlayerProfile, DetectedWeapon } from '@/lib/rag-engine';
+import { WEAPON_KNOWLEDGE_BASE } from '@/data/weaponKnowledgeBase';
 
 interface ProfilingSectionProps {
   profile: PlayerProfile | null;
