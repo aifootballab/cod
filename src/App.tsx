@@ -10,6 +10,7 @@ import { ProfileSettings } from '@/sections/ProfileSettings';
 import { BuildsSection } from '@/sections/BuildsSection';
 import { LoginPage } from '@/sections/LoginPage';
 import { DemoSection } from '@/sections/DemoSection';
+import { InteractiveTour, useTour } from '@/components/InteractiveTour';
 import { useAnalysis } from '@/hooks/useAnalysis';
 // Weapon database imported in BuildsSection
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
@@ -21,6 +22,7 @@ type View = 'home' | 'analyze' | 'builds' | 'leaderboard' | 'profile' | 'setting
 
 function App() {
   const { t } = useTranslation();
+  const { showTour, setShowTour, completeTour } = useTour();
   const uploadRef = useRef<HTMLDivElement>(null);
   const [currentView, setCurrentView] = useState<View>('home');
   const [showResults, setShowResults] = useState(false);
@@ -283,6 +285,13 @@ function App() {
       <main>
         {renderContent()}
       </main>
+
+      {/* Interactive Tour */}
+      <InteractiveTour 
+        isOpen={showTour} 
+        onClose={() => setShowTour(false)}
+        onComplete={completeTour}
+      />
 
       {/* Footer */}
       <footer className="py-8 px-4 border-t border-gray-800 bg-[#0a0a0a]">
