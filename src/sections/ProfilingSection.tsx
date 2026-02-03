@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Target, Zap, TrendingUp, Clock, Trophy, Award } from 'lucide-react';
+import { Target, Zap, TrendingUp, Clock } from 'lucide-react';
 import { Achievements } from '@/components/Achievements';
 import { ChatAI } from '@/components/ChatAI';
 import { StatsChart } from '@/components/StatsChart';

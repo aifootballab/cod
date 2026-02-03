@@ -27,7 +27,7 @@ export function EnterpriseProfilingFlow() {
   const [playerProfile, setPlayerProfile] = useState<PlayerProfile | null>(null);
   
   // Upload handlers
-  const handleProfileUpload = async (file: File) => {
+  const handleProfileUpload = async (_file: File) => {
     setIsAnalyzing(true);
     setError(null);
     
