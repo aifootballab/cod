@@ -39,11 +39,11 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
         setTimeout(onClose, 1000);
       } else {
         await signUp(formData.email, formData.password, formData.username);
-        setSuccess(t('auth.signupSuccess') || 'Account created! Check your email to confirm.');
+        setSuccess('✅ Account creato! Controlla la tua email (anche in SPAM) per confermare.');
         setTimeout(() => {
           setMode('login');
           setFormData(prev => ({ ...prev, password: '' }));
-        }, 2000);
+        }, 3000);
       }
     } catch (err: any) {
       setError(err.message || t('auth.error') || 'An error occurred');

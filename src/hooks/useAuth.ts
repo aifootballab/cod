@@ -26,7 +26,10 @@ export function useAuth() {
   const signUp = useCallback(async (email: string, password: string, username: string) => {
     const { data, error } = await supabase.auth.signUp({
       email, password,
-      options: { data: { username } },
+      options: { 
+        data: { username },
+        emailRedirectTo: `${window.location.origin}/profile`,
+      },
     });
     if (error) throw error;
     return data;
@@ -35,7 +38,13 @@ export function useAuth() {
   const signInWithGoogle = useCallback(async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/profile` },
+      options: { 
+        redirectTo: `${window.location.origin}/profile`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        }
+      },
     });
     if (error) throw error;
   }, []);
