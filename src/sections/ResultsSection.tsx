@@ -8,7 +8,7 @@ interface ResultsSectionProps {
   onNewAnalysis?: () => void;
 }
 
-export function ResultsSection({ analysis, onNewAnalysis }: ResultsSectionProps) {
+export function ResultsSection({ analysis, onNewAnalysis: _onNewAnalysis }: ResultsSectionProps) {
   const [activeBuild, setActiveBuild] = useState(0);
   const [activeTab, setActiveTab] = useState<'stats' | 'builds' | 'tips'>('stats');
   

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Target, Check, X, AlertTriangle, ChevronRight, BarChart3, Search } from 'lucide-react';
+import { Check, X, AlertTriangle, ChevronRight, BarChart3, Search } from 'lucide-react';
 import type { WeaponBuild } from '@/types';
 
 interface BuildsSectionProps {
