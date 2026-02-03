@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trophy, TrendingUp, Target, Zap } from 'lucide-react';
+import { TrendingUp, Target, Zap } from 'lucide-react';
 
 interface LeaderboardEntry {
   rank: number;

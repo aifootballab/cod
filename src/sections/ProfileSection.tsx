@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Achievements } from '@/components/Achievements';
 import { ChatAI } from '@/components/ChatAI';
 import { StatsChart } from '@/components/StatsChart';
-import { User, Mail, Lock, Trophy, Target, TrendingUp, Clock, Award } from 'lucide-react';
+import { User, Mail, Lock, Trophy, Target, TrendingUp, Clock } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 interface ProfileSectionProps {
@@ -13,12 +13,12 @@ interface ProfileSectionProps {
 
 // Mock achievements
 const mockAchievements = [
-  { id: '1', name: 'First Blood', description: 'Completa la tua prima analisi', icon: 'target', category: 'stats', points: 100, unlocked: true, unlockedAt: '2024-01-15' },
-  { id: '2', name: 'Positive K/D', description: 'Raggiungi un K/D superiore a 1.0', icon: 'trending', category: 'stats', points: 200, unlocked: true, unlockedAt: '2024-01-20' },
-  { id: '3', name: 'Sharpshooter', description: 'Raggiungi accuracy superiore al 30%', icon: 'target', category: 'stats', points: 300, unlocked: false, progress: 24, target: 30 },
-  { id: '4', name: 'Score Beast', description: 'Raggiungi SPM superiore a 400', icon: 'zap', category: 'stats', points: 400, unlocked: true, unlockedAt: '2024-02-01' },
-  { id: '5', name: 'Arsenal', description: 'Prova 5 armi diverse', icon: 'award', category: 'mastery', points: 250, unlocked: false, progress: 3, target: 5 },
-  { id: '6', name: 'Legend', description: 'Raggiungi rank LEGEND', icon: 'trophy', category: 'special', points: 1000, unlocked: false, progress: 320, target: 400 },
+  { id: '1', name: 'First Blood', description: 'Completa la tua prima analisi', icon: 'target', category: 'stats' as const, points: 100, unlocked: true, unlockedAt: '2024-01-15' },
+  { id: '2', name: 'Positive K/D', description: 'Raggiungi un K/D superiore a 1.0', icon: 'trending', category: 'stats' as const, points: 200, unlocked: true, unlockedAt: '2024-01-20' },
+  { id: '3', name: 'Sharpshooter', description: 'Raggiungi accuracy superiore al 30%', icon: 'target', category: 'stats' as const, points: 300, unlocked: false, progress: 24, target: 30 },
+  { id: '4', name: 'Score Beast', description: 'Raggiungi SPM superiore a 400', icon: 'zap', category: 'stats' as const, points: 400, unlocked: true, unlockedAt: '2024-02-01' },
+  { id: '5', name: 'Arsenal', description: 'Prova 5 armi diverse', icon: 'award', category: 'mastery' as const, points: 250, unlocked: false, progress: 3, target: 5 },
+  { id: '6', name: 'Legend', description: 'Raggiungi rank LEGEND', icon: 'trophy', category: 'special' as const, points: 1000, unlocked: false, progress: 320, target: 400 },
 ];
 
 // Mock analysis history

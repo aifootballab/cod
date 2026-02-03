@@ -5,9 +5,10 @@ import { getRank, getRankColor } from '@/data/weaponDatabase';
 
 interface ResultsSectionProps {
   analysis: Analysis;
+  onNewAnalysis?: () => void;
 }
 
-export function ResultsSection({ analysis }: ResultsSectionProps) {
+export function ResultsSection({ analysis, onNewAnalysis }: ResultsSectionProps) {
   const [activeBuild, setActiveBuild] = useState(0);
   const [activeTab, setActiveTab] = useState<'stats' | 'builds' | 'tips'>('stats');
   

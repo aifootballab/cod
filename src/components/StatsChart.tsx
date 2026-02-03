@@ -9,8 +9,7 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
-  BarChart,
-  Bar,
+
   Legend,
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
@@ -30,7 +29,7 @@ interface StatsChartProps {
 }
 
 export function StatsChart({ history, type = 'combined' }: StatsChartProps) {
-  const { t } = useTranslation();
+  useTranslation(); // hook present but unused for now
 
   const data = useMemo(() => {
     return history.map((h) => ({
