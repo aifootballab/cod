@@ -1,200 +1,413 @@
-import { useState } from 'react';
-import { Check, X, AlertTriangle, ChevronRight, BarChart3, Search } from 'lucide-react';
-import type { WeaponBuild } from '@/types';
+import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { 
+  Search, Crosshair, Target, Zap, Shield, 
+  ChevronDown, ChevronUp, Skull, X
+} from 'lucide-react';
+import { 
+  ALL_WEAPONS, 
+  type Weapon, 
+  type WeaponCategory,
+  WEAPON_STATS 
+} from '@/data/weapons-mw3-full';
 
 interface BuildsSectionProps {
-  builds: WeaponBuild[];
+  onSelectWeapon?: (weapon: Weapon) => void;
 }
 
-const getBarColor = (v: number) => v < 50 ? 'bg-red-500' : v < 70 ? 'bg-amber-500' : v < 85 ? 'bg-emerald-500' : 'bg-cyan-500';
+const CATEGORY_FILTERS: { id: WeaponCategory | 'all'; label: string; icon: any }[] = [
+  { id: 'all', label: 'All', icon: Crosshair },
+  { id: 'assault', label: 'AR', icon: Target },
+  { id: 'smg', label: 'SMG', icon: Zap },
+  { id: 'lmg', label: 'LMG', icon: Shield },
+  { id: 'marksman', label: 'Marksman', icon: Target },
+  { id: 'sniper', label: 'Sniper', icon: Crosshair },
+  { id: 'shotgun', label: 'Shotgun', icon: Skull },
+  { id: 'pistol', label: 'Pistol', icon: Target },
+];
 
-export function BuildsSection({ builds }: BuildsSectionProps) {
-  const [activeBuild, setActiveBuild] = useState(0);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [category, setCategory] = useState<string>('all');
+const TIER_COLORS = {
+  S: 'text-yellow-400 border-yellow-400 bg-yellow-400/10',
+  A: 'text-green-400 border-green-400 bg-green-400/10',
+  B: 'text-blue-400 border-blue-400 bg-blue-400/10',
+  C: 'text-gray-400 border-gray-400 bg-gray-400/10',
+  D: 'text-red-400 border-red-400 bg-red-400/10',
+  F: 'text-red-600 border-red-600 bg-red-600/10',
+};
 
-  const filteredBuilds = builds.filter(b => {
-    const matchesSearch = b.weapon_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         b.build_name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = category === 'all' || b.category === category;
-    return matchesSearch && matchesCategory;
-  });
+export function BuildsSection({ onSelectWeapon }: BuildsSectionProps) {
+  const { i18n } = useTranslation();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<WeaponCategory | 'all'>('all');
+  const [selectedTier, setSelectedTier] = useState<string | 'all'>('all');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string | 'all'>('all');
+  const [expandedWeapon, setExpandedWeapon] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'tier' | 'ttk' | 'name'>('tier');
 
-  const categories = [
-    { id: 'all', label: 'TUTTE' },
-    { id: 'assault_rifle', label: 'AR' },
-    { id: 'smg', label: 'SMG' },
-    { id: 'lmg', label: 'LMG' },
-    { id: 'sniper', label: 'SNIPER' },
-    { id: 'shotgun', label: 'SHOTGUN' },
-    { id: 'marksman', label: 'MARKSMAN' },
-  ];
+  // Filtra armi
+  const filteredWeapons = useMemo(() => {
+    let filtered = ALL_WEAPONS;
+
+    // Filtro categoria
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(w => w.category === selectedCategory);
+    }
+
+    // Filtro tier
+    if (selectedTier !== 'all') {
+      filtered = filtered.filter(w => w.tier === selectedTier);
+    }
+
+    // Filtro difficoltà
+    if (selectedDifficulty !== 'all') {
+      filtered = filtered.filter(w => w.difficulty === selectedDifficulty);
+    }
+
+    // Filtro ricerca
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(w => 
+        w.name.toLowerCase().includes(query) ||
+        w.description.toLowerCase().includes(query)
+      );
+    }
+
+    // Ordinamento
+    filtered.sort((a, b) => {
+      if (sortBy === 'tier') {
+        const tierOrder = { S: 0, A: 1, B: 2, C: 3, D: 4, F: 5 };
+        return tierOrder[a.tier] - tierOrder[b.tier];
+      }
+      if (sortBy === 'ttk') {
+        return a.ttk.close - b.ttk.close;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    return filtered;
+  }, [searchQuery, selectedCategory, selectedTier, selectedDifficulty, sortBy]);
+
+  const stats = {
+    total: filteredWeapons.length,
+    meta: filteredWeapons.filter(w => w.isMeta).length,
+    sTier: filteredWeapons.filter(w => w.tier === 'S').length,
+  };
+
+  const getDifficultyLabel = (diff: string) => {
+    const labels: Record<string, { it: string; en: string }> = {
+      easy: { it: 'Facile', en: 'Easy' },
+      medium: { it: 'Media', en: 'Medium' },
+      hard: { it: 'Difficile', en: 'Hard' },
+    };
+    return i18n.language === 'it' ? labels[diff]?.it : labels[diff]?.en;
+  };
 
   return (
-    <section className="py-24 px-4 bg-[#0a0a0a] min-h-screen pt-28">
+    <section className="py-24 px-4 bg-[#0a0a0a] min-h-screen">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
-          <h2 className="text-4xl md:text-6xl font-black text-white mb-4" style={{ fontFamily: 'Black Ops One, cursive' }}>
-            ARSENAL <span className="text-orange-500">TATTICO</span>
+          <h2 className="text-4xl md:text-5xl font-black text-white mb-4" style={{ fontFamily: 'Black Ops One, cursive' }}>
+            {i18n.language === 'it' ? 'ARSENALE ' : 'ARSENAL '}
+            <span className="text-orange-500">MW3</span>
           </h2>
-          <p className="text-gray-500 max-w-2xl mx-auto">
-            Database delle build META ottimizzate per ogni stile di gioco
+          <p className="text-gray-400 max-w-2xl mx-auto">
+            {i18n.language === 'it' 
+              ? `Database completo con ${WEAPON_STATS.total} armi, stats reali e build consigliate`
+              : `Complete database with ${WEAPON_STATS.total} weapons, real stats and recommended builds`
+            }
           </p>
+          
+          {/* Stats rapide */}
+          <div className="flex justify-center gap-6 mt-6">
+            <div className="text-center">
+              <p className="text-2xl font-black text-orange-500">{WEAPON_STATS.total}</p>
+              <p className="text-xs text-gray-500 font-mono uppercase">{i18n.language === 'it' ? 'Armi' : 'Weapons'}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-black text-yellow-500">{WEAPON_STATS.metaCount}</p>
+              <p className="text-xs text-gray-500 font-mono uppercase">META</p>
+            </div>
+            <div className="text-center">
+              <p className="text-2xl font-black text-green-500">{WEAPON_STATS.sTier}</p>
+              <p className="text-xs text-gray-500 font-mono uppercase">S-TIER</p>
+            </div>
+          </div>
         </div>
 
-        {/* Search & Filter */}
-        <div className="mb-8 flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+        {/* Filtri */}
+        <div className="bg-[#111] border border-gray-800 p-4 mb-8">
+          {/* Barra ricerca */}
+          <div className="relative mb-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
             <input
               type="text"
-              placeholder="Cerca arma o build..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 bg-[#111] border border-gray-800 text-white placeholder-gray-600 focus:border-orange-500 focus:outline-none"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={i18n.language === 'it' ? 'Cerca arma...' : 'Search weapon...'}
+              className="w-full bg-black border border-gray-700 pl-10 pr-4 py-3 text-white placeholder-gray-600 focus:border-orange-500 focus:outline-none"
             />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {categories.map((cat) => (
+
+          {/* Filtri categorie */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {CATEGORY_FILTERS.map((cat) => (
               <button
                 key={cat.id}
-                onClick={() => setCategory(cat.id)}
-                className={`px-4 py-2 border text-sm font-mono tracking-wider transition-all ${
-                  category === cat.id
-                    ? 'border-orange-500 bg-orange-500 text-black'
-                    : 'border-gray-700 text-gray-500 hover:border-gray-600'
+                onClick={() => setSelectedCategory(cat.id as WeaponCategory | 'all')}
+                className={`flex items-center gap-2 px-3 py-2 text-xs font-mono border transition-all ${
+                  selectedCategory === cat.id
+                    ? 'bg-orange-500 text-black border-orange-500'
+                    : 'bg-black text-gray-400 border-gray-700 hover:border-gray-500'
                 }`}
               >
+                <cat.icon className="w-3 h-3" />
                 {cat.label}
               </button>
             ))}
           </div>
+
+          {/* Filtri avanzati */}
+          <div className="flex flex-wrap gap-4">
+            {/* Tier filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 font-mono">TIER:</span>
+              <select
+                value={selectedTier}
+                onChange={(e) => setSelectedTier(e.target.value)}
+                className="bg-black border border-gray-700 text-white text-xs px-2 py-1 focus:border-orange-500 focus:outline-none"
+              >
+                <option value="all">All</option>
+                <option value="S">S</option>
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+              </select>
+            </div>
+
+            {/* Difficulty filter */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 font-mono">
+                {i18n.language === 'it' ? 'DIFF:' : 'DIFF:'}
+              </span>
+              <select
+                value={selectedDifficulty}
+                onChange={(e) => setSelectedDifficulty(e.target.value)}
+                className="bg-black border border-gray-700 text-white text-xs px-2 py-1 focus:border-orange-500 focus:outline-none"
+              >
+                <option value="all">All</option>
+                <option value="easy">{getDifficultyLabel('easy')}</option>
+                <option value="medium">{getDifficultyLabel('medium')}</option>
+                <option value="hard">{getDifficultyLabel('hard')}</option>
+              </select>
+            </div>
+
+            {/* Sort */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 font-mono">
+                {i18n.language === 'it' ? 'ORDINA:' : 'SORT:'}
+              </span>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-black border border-gray-700 text-white text-xs px-2 py-1 focus:border-orange-500 focus:outline-none"
+              >
+                <option value="tier">Tier</option>
+                <option value="ttk">TTK</option>
+                <option value="name">Name</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Risultati filtro */}
+          <div className="mt-4 pt-4 border-t border-gray-800 flex justify-between items-center">
+            <span className="text-xs text-gray-500 font-mono">
+              {i18n.language === 'it' 
+                ? `Mostrando ${stats.total} armi (${stats.meta} META)`
+                : `Showing ${stats.total} weapons (${stats.meta} META)`
+              }
+            </span>
+            {(selectedCategory !== 'all' || selectedTier !== 'all' || selectedDifficulty !== 'all' || searchQuery) && (
+              <button
+                onClick={() => {
+                  setSelectedCategory('all');
+                  setSelectedTier('all');
+                  setSelectedDifficulty('all');
+                  setSearchQuery('');
+                }}
+                className="text-xs text-orange-500 hover:text-orange-400 font-mono"
+              >
+                {i18n.language === 'it' ? 'Reset filtri' : 'Reset filters'}
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Build Selector */}
-        <div className="mb-8 flex flex-wrap gap-2">
-          {filteredBuilds.map((build, i) => (
-            <button
-              key={build.id}
-              onClick={() => setActiveBuild(i)}
-              className={`px-4 py-2 border text-sm font-mono tracking-wider transition-all ${
-                activeBuild === i && filteredBuilds[activeBuild]?.id === build.id
-                  ? 'border-orange-500 bg-orange-500 text-black'
-                  : 'border-gray-700 bg-gray-900 text-gray-500 hover:border-gray-600'
+        {/* Griglia armi */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredWeapons.map((weapon) => (
+            <div
+              key={weapon.id}
+              className={`border ${TIER_COLORS[weapon.tier]} p-4 cursor-pointer transition-all hover:scale-[1.02] ${
+                expandedWeapon === weapon.id ? 'col-span-1 md:col-span-2 lg:col-span-3' : ''
               }`}
+              onClick={() => setExpandedWeapon(expandedWeapon === weapon.id ? null : weapon.id)}
             >
-              {build.weapon_name}
-              {build.is_meta && <span className="ml-2 text-xs">[META]</span>}
-            </button>
+              {/* Header arma */}
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-white" style={{ fontFamily: 'Black Ops One, cursive' }}>
+                      {weapon.name}
+                    </h3>
+                    {weapon.isMeta && (
+                      <span className="px-2 py-0.5 bg-orange-500 text-black text-xs font-bold">
+                        META
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 font-mono uppercase">
+                    {weapon.category} • {getDifficultyLabel(weapon.difficulty)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className={`text-2xl font-black ${TIER_COLORS[weapon.tier].split(' ')[0]}`}>
+                    {weapon.tier}
+                  </span>
+                  <p className="text-xs text-gray-500 font-mono">TIER</p>
+                </div>
+              </div>
+
+              {/* Stats rapide */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="text-center p-2 bg-black/50">
+                  <p className="text-lg font-bold text-orange-400">{weapon.fireRateRPM}</p>
+                  <p className="text-xs text-gray-500 font-mono">RPM</p>
+                </div>
+                <div className="text-center p-2 bg-black/50">
+                  <p className="text-lg font-bold text-cyan-400">{weapon.ttk.close}ms</p>
+                  <p className="text-xs text-gray-500 font-mono">TTK</p>
+                </div>
+                <div className="text-center p-2 bg-black/50">
+                  <p className="text-lg font-bold text-green-400">{weapon.adsTime}ms</p>
+                  <p className="text-xs text-gray-500 font-mono">ADS</p>
+                </div>
+              </div>
+
+              {/* Descrizione */}
+              <p className="text-sm text-gray-300 mb-3 line-clamp-2">
+                {weapon.description}
+              </p>
+
+              {/* Best for */}
+              <div className="flex flex-wrap gap-1 mb-3">
+                {weapon.bestFor.slice(0, 3).map((tag, i) => (
+                  <span key={i} className="px-2 py-0.5 bg-gray-800 text-gray-300 text-xs">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              {/* Expand icon */}
+              <div className="flex justify-center">
+                {expandedWeapon === weapon.id ? (
+                  <ChevronUp className="w-5 h-5 text-gray-500" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-gray-500" />
+                )}
+              </div>
+
+              {/* Dettagli espansi */}
+              {expandedWeapon === weapon.id && (
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                  {/* Stats dettagliate */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                    <div>
+                      <p className="text-xs text-gray-500 font-mono uppercase">{i18n.language === 'it' ? 'Danno' : 'Damage'}</p>
+                      <p className="text-white font-mono">Chest: {weapon.damage.chest}</p>
+                      <p className="text-gray-400 text-xs font-mono">Head: {weapon.damage.head}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 font-mono uppercase">{i18n.language === 'it' ? 'Range' : 'Range'}</p>
+                      <p className="text-white font-mono">{weapon.range.damageDropStart}m - {weapon.range.damageDropEnd}m</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 font-mono uppercase">{i18n.language === 'it' ? 'Rinculo' : 'Recoil'}</p>
+                      <p className="text-white font-mono">V: {weapon.recoilVertical}/10</p>
+                      <p className="text-gray-400 text-xs font-mono">H: {weapon.recoilHorizontal}/10</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 font-mono uppercase">{i18n.language === 'it' ? 'Mobilità' : 'Mobility'}</p>
+                      <p className="text-white font-mono">Sprint: {weapon.sprintToFire}ms</p>
+                      <p className="text-gray-400 text-xs font-mono">Reload: {weapon.reloadTime}s</p>
+                    </div>
+                  </div>
+
+                  {/* Attachments */}
+                  {weapon.metaAttachments && (
+                    <div className="mb-4">
+                      <p className="text-xs text-gray-500 font-mono uppercase mb-2">
+                        {i18n.language === 'it' ? 'Attachments Consigliati' : 'Recommended Attachments'}
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {weapon.metaAttachments.map((att, i) => (
+                          <span key={i} className="px-2 py-1 bg-orange-500/20 text-orange-400 text-xs border border-orange-500/30">
+                            {att}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Modalità consigliate */}
+                  <div className="flex gap-2 mb-4">
+                    {weapon.recommendedModes.map(mode => (
+                      <span key={mode} className="px-2 py-1 bg-green-500/20 text-green-400 text-xs border border-green-500/30 uppercase">
+                        {mode}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Azione */}
+                  {onSelectWeapon && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectWeapon(weapon);
+                      }}
+                      className="w-full py-2 bg-orange-500 hover:bg-orange-600 text-black font-bold font-mono text-sm transition-colors"
+                    >
+                      {i18n.language === 'it' ? 'SELEZIONA ARMA' : 'SELECT WEAPON'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           ))}
         </div>
 
-        {/* Active Build */}
-        {filteredBuilds[activeBuild] && (
-          <div className="border border-orange-500/30 bg-gradient-to-b from-[#111] to-[#0a0a0a]">
-            {/* Build Header */}
-            <div className="p-8 bg-gradient-to-r from-orange-500/20 to-amber-500/20 border-b border-orange-500/30">
-              <div className="flex items-start justify-between mb-4 flex-wrap gap-4">
-                <div>
-                  <p className="text-orange-400 text-sm font-mono mb-1">
-                    {filteredBuilds[activeBuild].category.toUpperCase().replace('_', ' ')}
-                  </p>
-                  <h3 className="text-4xl font-black text-white" style={{ fontFamily: 'Black Ops One, cursive' }}>
-                    {filteredBuilds[activeBuild].weapon_name}
-                  </h3>
-                  <p className="text-amber-400 text-lg font-mono tracking-wider">
-                    {filteredBuilds[activeBuild].build_name}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  {filteredBuilds[activeBuild].is_meta && (
-                    <div className="px-4 py-2 bg-orange-500 text-black font-bold text-sm font-mono">
-                      META
-                    </div>
-                  )}
-                  <div className={`px-4 py-2 border text-sm font-mono ${
-                    filteredBuilds[activeBuild].difficulty === 'easy' ? 'border-emerald-500 text-emerald-400' :
-                    filteredBuilds[activeBuild].difficulty === 'medium' ? 'border-amber-500 text-amber-400' :
-                    'border-red-500 text-red-400'
-                  }`}>
-                    {filteredBuilds[activeBuild].difficulty.toUpperCase()}
-                  </div>
-                </div>
-              </div>
-              <p className="text-gray-400">{filteredBuilds[activeBuild].description}</p>
-            </div>
-
-            {/* Stats */}
-            <div className="p-8 border-b border-gray-800">
-              <h4 className="text-white font-bold mb-6 flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-orange-500" />
-                PERFORMANCE STATS
-              </h4>
-              <div className="grid md:grid-cols-2 gap-4">
-                {[
-                  { label: 'DANNO', value: filteredBuilds[activeBuild].stats.damage },
-                  { label: 'PRECISIONE', value: filteredBuilds[activeBuild].stats.accuracy },
-                  { label: 'RANGE', value: filteredBuilds[activeBuild].stats.range },
-                  { label: 'CADENZA', value: filteredBuilds[activeBuild].stats.fire_rate },
-                  { label: 'MOBILITÀ', value: filteredBuilds[activeBuild].stats.mobility },
-                  { label: 'CONTROLLO', value: filteredBuilds[activeBuild].stats.control },
-                ].map((s) => (
-                  <div key={s.label} className="flex items-center gap-4">
-                    <span className="text-gray-500 text-xs font-mono w-24">{s.label}</span>
-                    <div className="flex-1 h-4 bg-gray-800 relative">
-                      <div className={`h-full ${getBarColor(s.value)}`} style={{ width: `${s.value}%` }} />
-                    </div>
-                    <span className={`text-lg font-bold font-mono w-10 text-right ${getBarColor(s.value).replace('bg-', 'text-')}`}>
-                      {s.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Attachments */}
-            <div className="p-8 border-b border-gray-800">
-              <h4 className="text-white font-bold mb-6">ATTACHMENTS</h4>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredBuilds[activeBuild].attachments.map((att, i) => (
-                  <div key={i} className="p-4 border-l-2 border-orange-500 bg-orange-500/5">
-                    <p className="text-orange-400 text-xs font-mono mb-1">{att.slot}</p>
-                    <p className="text-white font-bold">{att.name}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Pros & Cons */}
-            <div className="p-8 grid md:grid-cols-2 gap-8">
-              <div>
-                <h4 className="text-emerald-400 font-bold mb-4 flex items-center gap-2">
-                  <Check className="w-5 h-5" /> PRO
-                </h4>
-                <ul className="space-y-2">
-                  {filteredBuilds[activeBuild].pros.map((p, i) => (
-                    <li key={i} className="text-gray-400 text-sm flex items-start gap-2">
-                      <ChevronRight className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-                      {p}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h4 className="text-red-400 font-bold mb-4 flex items-center gap-2">
-                  <X className="w-5 h-5" /> CONTRO
-                </h4>
-                <ul className="space-y-2">
-                  {filteredBuilds[activeBuild].cons.map((c, i) => (
-                    <li key={i} className="text-gray-400 text-sm flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                      {c}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
+        {/* Empty state */}
+        {filteredWeapons.length === 0 && (
+          <div className="text-center py-16">
+            <Search className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-white mb-2">
+              {i18n.language === 'it' ? 'Nessuna arma trovata' : 'No weapons found'}
+            </h3>
+            <p className="text-gray-500">
+              {i18n.language === 'it' 
+                ? 'Prova a modificare i filtri di ricerca'
+                : 'Try adjusting your search filters'
+              }
+            </p>
           </div>
         )}
       </div>

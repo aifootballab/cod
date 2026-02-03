@@ -11,7 +11,7 @@ import { BuildsSection } from '@/sections/BuildsSection';
 import { LoginPage } from '@/sections/LoginPage';
 import { DemoSection } from '@/sections/DemoSection';
 import { useAnalysis } from '@/hooks/useAnalysis';
-import { weaponBuilds } from '@/data/weaponDatabase';
+// Weapon database imported in BuildsSection
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { supabase } from '@/lib/supabase';
 import { Crosshair, Menu, X, User, LogOut, Zap } from 'lucide-react';
@@ -88,7 +88,7 @@ function App() {
   };
 
   const handleAnalysisStart = async (file: File) => {
-    await startAnalysis(file, weaponBuilds);
+    await startAnalysis(file);
     setShowResults(true);
   };
 
@@ -141,7 +141,7 @@ function App() {
           </div>
         );
       case 'builds':
-        return <BuildsSection builds={weaponBuilds} />;
+        return <BuildsSection />;
       case 'leaderboard':
         return <LeaderboardSection />;
       case 'profile':

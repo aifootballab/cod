@@ -2,7 +2,7 @@
 // OPENAI INTEGRATION - OCR + AI Analysis + RAG
 // ============================================
 
-import type { PlayerStats, WeaponBuild } from '@/types';
+import type { PlayerStats } from '@/types';
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
@@ -170,7 +170,7 @@ export const generateEmbedding = async (text: string): Promise<number[]> => {
 // AI Analysis: Generate personalized analysis and tips
 export const generateAIAnalysis = async (
   stats: PlayerStats,
-  builds: WeaponBuild[]
+  builds: any[]
 ): Promise<{ analysis: string; tips: string[] }> => {
   if (!OPENAI_API_KEY) {
     throw new Error('OpenAI API key not configured');
@@ -189,7 +189,7 @@ PLAYER STATS:
 - Playstyle: ${stats.playstyle_detected}
 
 RECOMMENDED BUILDS:
-${builds.map((b, i) => `${i + 1}. ${b.weapon_name} - ${b.build_name}: ${b.description}`).join('\n')}
+${builds.map((b, i) => `${i + 1}. ${b.name || b.weapon_name} - ${b.category || b.build_name}: ${b.description || b.bestFor?.join(', ')}`).join('\n')}
 
 Provide:
 1. A brief tactical analysis (2-3 sentences)
@@ -249,8 +249,8 @@ Format response as JSON:
 // RAG: Find best builds using AI + vector search
 export const findBestBuildsWithAI = async (
   stats: PlayerStats,
-  allBuilds: WeaponBuild[]
-): Promise<WeaponBuild[]> => {
+  allBuilds: any[]
+): Promise<any[]> => {
   if (!OPENAI_API_KEY) {
     // Fallback: use local algorithm
     return getBuildsByStatsLocal(stats.kd_ratio, stats.accuracy, allBuilds);
@@ -265,7 +265,7 @@ PLAYER:
 - Playstyle: ${stats.playstyle_detected}
 
 BUILDS:
-${allBuilds.map((b, i) => `${i}: ${b.weapon_name} - ${b.build_name} (${b.category}, difficulty: ${b.difficulty}, meta: ${b.is_meta})`).join('\n')}
+${allBuilds.map((b, i) => `${i}: ${b.name || b.weapon_name} (${b.category}, tier: ${b.tier}, difficulty: ${b.difficulty}, meta: ${b.isMeta || b.is_meta})`).join('\n')}
 
 Return ONLY a JSON array of build indices in order of recommendation (best first).
 Example: [2, 0, 4, 1, 3]`;
@@ -304,7 +304,7 @@ Example: [2, 0, 4, 1, 3]`;
 };
 
 // Local fallback for build selection
-const getBuildsByStatsLocal = (kd: number, accuracy: number, builds: WeaponBuild[]): WeaponBuild[] => {
+const getBuildsByStatsLocal = (kd: number, accuracy: number, builds: any[]): any[] => {
   // Score each build based on player stats
   const scored = builds.map(build => {
     let score = 0;

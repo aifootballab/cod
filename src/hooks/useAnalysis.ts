@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
-import type { Analysis, PlayerStats, WeaponBuild } from '@/types';
+import type { Analysis, PlayerStats } from '@/types';
 import { extractStatsFromImage, generateAIAnalysis, findBestBuildsWithAI, validateStats } from '@/lib/openai';
 import { detectPlaystyle } from '@/data/weaponDatabase';
+import { ALL_WEAPONS } from '@/data/weapons-mw3-full';
 
 interface UseAnalysisOptions {
   userId?: string;
@@ -14,7 +15,7 @@ export function useAnalysis(options: UseAnalysisOptions = {}) {
   const [stage, setStage] = useState<'idle' | 'upload' | 'ocr' | 'ai' | 'rag' | 'save' | 'complete' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  const startAnalysis = useCallback(async (file: File, allBuilds: WeaponBuild[]) => {
+  const startAnalysis = useCallback(async (file: File) => {
     setIsAnalyzing(true);
     setProgress(0);
     setError(null);
@@ -71,12 +72,12 @@ export function useAnalysis(options: UseAnalysisOptions = {}) {
         }),
       };
       
-      const { analysis: aiAnalysis, tips } = await generateAIAnalysis(playerStats, allBuilds.slice(0, 3));
+      const { analysis: aiAnalysis, tips } = await generateAIAnalysis(playerStats, ALL_WEAPONS.slice(0, 3));
       setProgress(70);
       
       // Stage 4: RAG - Find best builds (70-85%)
       setStage('rag');
-      const recommendedBuilds = await findBestBuildsWithAI(playerStats, allBuilds);
+      const recommendedBuilds = await findBestBuildsWithAI(playerStats, ALL_WEAPONS);
       setProgress(85);
       
       // Stage 5: Save to database (85-95%)
