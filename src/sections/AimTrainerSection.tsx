@@ -8,7 +8,10 @@ import {
   Settings,
   Trophy,
   Timer,
-  Crosshair as CrosshairIcon
+  Crosshair as CrosshairIcon,
+  Zap,
+  TrendingUp,
+  Award
 } from 'lucide-react';
 import type { Crosshair } from '@/types/aim-trainer';
 import { useAimTrainer } from '@/hooks/useAimTrainer';
@@ -18,23 +21,43 @@ interface AimTrainerSectionProps {
   onBack: () => void;
 }
 
+// Hook per rilevare se è mobile
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  
+  return isMobile;
+}
+
 export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const joystickRef = useRef<HTMLDivElement>(null);
   const joystickInstanceRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<number>(0);
+  const isMobile = useIsMobile();
   
-  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
   const [showSettings, setShowSettings] = useState(false);
+  const [sensitivity, setSensitivity] = useState(5);
   
   // Responsive canvas
   useEffect(() => {
     const updateDimensions = () => {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
+        const isMobileView = window.innerWidth < 768;
         setDimensions({
-          width: Math.min(rect.width - 32, 1200),
-          height: Math.min(window.innerHeight - 300, 800),
+          width: Math.min(rect.width - (isMobileView ? 16 : 32), 1200),
+          height: isMobileView 
+            ? Math.min(window.innerHeight - 280, 500)
+            : Math.min(window.innerHeight - 250, 600),
         });
       }
     };
@@ -44,15 +67,16 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
     return () => window.removeEventListener('resize', updateDimensions);
   }, []);
 
+  const config = { ...DEFAULT_CONFIG, sensitivity };
   const [state, actions] = useAimTrainer(
     dimensions.width,
     dimensions.height,
-    DEFAULT_CONFIG
+    config
   );
 
   const { gameState, crosshair, targets, score, timeRemaining, session } = state;
 
-  // Setup joystick
+  // Setup joystick con opzioni ottimizzate per mobile
   useEffect(() => {
     if (!joystickRef.current || gameState !== GameState.PLAYING) return;
 
@@ -60,9 +84,12 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
       zone: joystickRef.current,
       mode: 'static',
       position: { left: '50%', top: '50%' },
-      color: 'rgba(245, 158, 11, 0.8)', // amber-500 with opacity
-      size: 120,
+      color: 'rgba(245, 158, 11, 0.9)',
+      size: isMobile ? 100 : 140,
       fadeTime: 0,
+      threshold: 0.1, // Più sensibile
+      lockX: false,
+      lockY: false,
     });
 
     joystickInstanceRef.current = joystick;
@@ -76,19 +103,23 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
         force,
         vector: {
           x: Math.cos(angle) * force,
-          y: -Math.sin(angle) * force, // Y inverted for canvas
+          y: -Math.sin(angle) * force,
         },
       };
       
       actions.moveCrosshair(joystickData);
     });
 
+    joystick.on('end', () => {
+      // Quando rilascia, il mirino si ferma (non serve fare nulla, il vector diventa 0)
+    });
+
     return () => {
       joystick.destroy();
     };
-  }, [gameState, actions]);
+  }, [gameState, actions, isMobile, sensitivity]);
 
-  // Canvas rendering
+  // Canvas rendering con animazione smooth
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -96,130 +127,192 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear canvas
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+    const render = (timestamp: number) => {
+      ctx.fillStyle = '#050505';
+      ctx.fillRect(0, 0, dimensions.width, dimensions.height);
 
-    // Grid background (tactical HUD)
-    ctx.strokeStyle = 'rgba(245, 158, 11, 0.1)';
-    ctx.lineWidth = 1;
-    const gridSize = 50;
+      // Grid background animata
+      const gridOffset = (timestamp / 50) % 50;
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.08)';
+      ctx.lineWidth = 1;
+      const gridSize = 50;
+      
+      for (let x = gridOffset; x <= dimensions.width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, dimensions.height);
+        ctx.stroke();
+      }
+      
+      for (let y = 0; y <= dimensions.height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(dimensions.width, y);
+        ctx.stroke();
+      }
+
+      // Radar sweep effect (usa timestamp per consistenza)
+      const sweepAngle = (timestamp / 2000) * Math.PI * 2;
+      const gradient = ctx.createConicGradient(sweepAngle, dimensions.width / 2, dimensions.height / 2);
+      gradient.addColorStop(0, 'rgba(245, 158, 11, 0)');
+      gradient.addColorStop(0.02, 'rgba(245, 158, 11, 0.1)');
+      gradient.addColorStop(0.04, 'rgba(245, 158, 11, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+
+      // Render targets con effetti
+      targets.forEach(target => {
+        const age = Date.now() - target.spawnTime;
+        const remaining = 1 - (age / target.maxLifetime);
+        const pulse = Math.sin(timestamp / 200) * 0.1 + 1;
+        
+        // Glow effect
+        const glowRadius = target.radius * 1.5 * pulse;
+        const glowGradient = ctx.createRadialGradient(
+          target.x, target.y, 0,
+          target.x, target.y, glowRadius
+        );
+        glowGradient.addColorStop(0, `rgba(239, 68, 68, ${remaining * 0.8})`);
+        glowGradient.addColorStop(1, 'rgba(239, 68, 68, 0)');
+        ctx.fillStyle = glowGradient;
+        ctx.fillRect(target.x - glowRadius, target.y - glowRadius, glowRadius * 2, glowRadius * 2);
+        
+        // Target circle
+        ctx.beginPath();
+        ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(239, 68, 68, ${remaining})`;
+        ctx.fill();
+        
+        // Target ring
+        ctx.beginPath();
+        ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Inner cross
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(target.x - 5, target.y);
+        ctx.lineTo(target.x + 5, target.y);
+        ctx.moveTo(target.x, target.y - 5);
+        ctx.lineTo(target.x, target.y + 5);
+        ctx.stroke();
+      });
+
+      // Render crosshair con effetti
+      renderCrosshair(ctx, crosshair, timestamp);
+      
+      animationRef.current = requestAnimationFrame(render);
+    };
+
+    animationRef.current = requestAnimationFrame(render);
     
-    for (let x = 0; x <= dimensions.width; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, dimensions.height);
-      ctx.stroke();
-    }
-    
-    for (let y = 0; y <= dimensions.height; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(dimensions.width, y);
-      ctx.stroke();
-    }
-
-    // Render targets
-    targets.forEach(target => {
-      const age = Date.now() - target.spawnTime;
-      const remaining = 1 - (age / target.maxLifetime);
-      
-      // Target circle
-      ctx.beginPath();
-      ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(239, 68, 68, ${remaining})`; // Fade out
-      ctx.fill();
-      
-      // Target ring
-      ctx.beginPath();
-      ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = '#ef4444';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      
-      // Inner dot
-      ctx.beginPath();
-      ctx.arc(target.x, target.y, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#fff';
-      ctx.fill();
-    });
-
-    // Render crosshair
-    renderCrosshair(ctx, crosshair);
-
+    return () => {
+      cancelAnimationFrame(animationRef.current);
+    };
   }, [targets, crosshair, dimensions]);
 
-  const renderCrosshair = (ctx: CanvasRenderingContext2D, cross: Crosshair) => {
+  const renderCrosshair = (ctx: CanvasRenderingContext2D, cross: Crosshair, timestamp: number) => {
     const { x, y, size, color } = cross;
     
-    // Outer ring
+    // Dynamic outer ring (rotating)
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(timestamp / 1000);
+    
+    ctx.beginPath();
+    ctx.arc(0, 0, size + 5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    
+    // Main outer ring
     ctx.beginPath();
     ctx.arc(x, y, size, 0, Math.PI * 2);
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.stroke();
     
-    // Inner dot
+    // Inner dot con glow
+    const dotGradient = ctx.createRadialGradient(x, y, 0, x, y, 8);
+    dotGradient.addColorStop(0, color);
+    dotGradient.addColorStop(1, 'rgba(245, 158, 11, 0)');
+    ctx.fillStyle = dotGradient;
+    ctx.beginPath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
+    ctx.fill();
+    
     ctx.beginPath();
     ctx.arc(x, y, 3, 0, Math.PI * 2);
-    ctx.fillStyle = color;
+    ctx.fillStyle = '#fff';
     ctx.fill();
     
     // Cross lines
     ctx.strokeStyle = color;
     ctx.lineWidth = 1;
     
+    const gap = 8;
+    const length = size + 10;
+    
     // Horizontal
     ctx.beginPath();
-    ctx.moveTo(x - size - 5, y);
-    ctx.lineTo(x - 5, y);
-    ctx.moveTo(x + 5, y);
-    ctx.lineTo(x + size + 5, y);
+    ctx.moveTo(x - length, y);
+    ctx.lineTo(x - gap, y);
+    ctx.moveTo(x + gap, y);
+    ctx.lineTo(x + length, y);
     ctx.stroke();
     
     // Vertical
     ctx.beginPath();
-    ctx.moveTo(x, y - size - 5);
-    ctx.lineTo(x, y - 5);
-    ctx.moveTo(x, y + 5);
-    ctx.lineTo(x, y + size + 5);
+    ctx.moveTo(x, y - length);
+    ctx.lineTo(x, y - gap);
+    ctx.moveTo(x, y + gap);
+    ctx.lineTo(x, y + length);
     ctx.stroke();
     
-    // Corner brackets
-    const bracketSize = size * 0.5;
+    // Corner brackets (military style)
+    const bracketSize = size * 0.6;
+    const bracketOffset = size + 5;
     ctx.lineWidth = 2;
     
     // Top-left
     ctx.beginPath();
-    ctx.moveTo(x - size - 10, y - size + bracketSize);
-    ctx.lineTo(x - size - 10, y - size - 10);
-    ctx.lineTo(x - size + bracketSize, y - size - 10);
+    ctx.moveTo(x - bracketOffset - bracketSize, y - bracketOffset);
+    ctx.lineTo(x - bracketOffset, y - bracketOffset);
+    ctx.lineTo(x - bracketOffset, y - bracketOffset - bracketSize);
     ctx.stroke();
     
     // Top-right
     ctx.beginPath();
-    ctx.moveTo(x + size + 10, y - size + bracketSize);
-    ctx.lineTo(x + size + 10, y - size - 10);
-    ctx.lineTo(x + size - bracketSize, y - size - 10);
+    ctx.moveTo(x + bracketOffset + bracketSize, y - bracketOffset);
+    ctx.lineTo(x + bracketOffset, y - bracketOffset);
+    ctx.lineTo(x + bracketOffset, y - bracketOffset - bracketSize);
     ctx.stroke();
     
     // Bottom-left
     ctx.beginPath();
-    ctx.moveTo(x - size - 10, y + size - bracketSize);
-    ctx.lineTo(x - size - 10, y + size + 10);
-    ctx.lineTo(x - size + bracketSize, y + size + 10);
+    ctx.moveTo(x - bracketOffset - bracketSize, y + bracketOffset);
+    ctx.lineTo(x - bracketOffset, y + bracketOffset);
+    ctx.lineTo(x - bracketOffset, y + bracketOffset + bracketSize);
     ctx.stroke();
     
     // Bottom-right
     ctx.beginPath();
-    ctx.moveTo(x + size + 10, y + size - bracketSize);
-    ctx.lineTo(x + size + 10, y + size + 10);
-    ctx.lineTo(x + size - bracketSize, y + size + 10);
+    ctx.moveTo(x + bracketOffset + bracketSize, y + bracketOffset);
+    ctx.lineTo(x + bracketOffset, y + bracketOffset);
+    ctx.lineTo(x + bracketOffset, y + bracketOffset + bracketSize);
     ctx.stroke();
   };
 
-  // Handle shoot (tap on canvas)
-  const handleCanvasClick = useCallback(() => {
+  // Handle shoot
+  const handleCanvasClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     actions.shoot();
   }, [actions]);
 
@@ -239,255 +332,345 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
     : 0;
 
   return (
-    <div ref={containerRef} className="min-h-screen bg-black text-amber-500 p-4 md:p-8">
-      {/* Header */}
-      <div className="max-w-7xl mx-auto mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+    <div ref={containerRef} className="min-h-screen bg-black text-amber-500 overflow-hidden">
+      {/* Scan line overlay */}
+      <div className="fixed inset-0 pointer-events-none z-50 opacity-5">
+        <div className="h-full w-full bg-gradient-to-b from-transparent via-amber-500 to-transparent animate-scan" />
+      </div>
+      
+      {/* Header - più compatto su mobile */}
+      <div className="px-4 py-3 md:px-6 md:py-4 border-b border-amber-600/30 bg-black/90 backdrop-blur">
+        <div className="flex items-center justify-between max-w-7xl mx-auto">
+          <div className="flex items-center gap-3">
             <button 
               onClick={onBack}
-              className="px-4 py-2 border border-amber-600 text-amber-500 hover:bg-amber-600/20 rounded"
+              className="px-3 py-1.5 md:px-4 md:py-2 border border-amber-600 text-amber-500 hover:bg-amber-600/20 rounded text-sm md:text-base transition-all active:scale-95"
             >
-              ← Indietro
+              ← <span className="hidden md:inline">Indietro</span>
             </button>
-            <h1 className="text-2xl md:text-3xl font-black uppercase tracking-wider">
-              <span className="text-orange-600">AIM</span> TRAINER
+            <h1 className="text-lg md:text-2xl font-black uppercase tracking-wider">
+              <span className="text-orange-600">AIM</span>
+              <span className="hidden md:inline"> TRAINER</span>
             </h1>
           </div>
           
           <button
             onClick={() => setShowSettings(!showSettings)}
-            className="p-2 border border-amber-600 text-amber-500 hover:bg-amber-600/20 rounded"
+            className="p-2 border border-amber-600 text-amber-500 hover:bg-amber-600/20 rounded transition-all active:scale-95"
           >
-            <Settings className="w-5 h-5" />
+            <Settings className="w-4 h-4 md:w-5 md:h-5" />
           </button>
         </div>
       </div>
 
-      {/* HUD Stats */}
-      <div className="max-w-7xl mx-auto mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-zinc-900/80 border border-amber-600/30 p-4 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-amber-600" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-amber-600" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-amber-600" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-amber-600" />
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="px-4 py-3 border-b border-amber-600/30 bg-zinc-900/90">
+          <div className="max-w-7xl mx-auto flex items-center gap-4">
+            <span className="text-sm text-zinc-400">Sensibilità:</span>
+            <input
+              type="range"
+              min="1"
+              max="10"
+              value={sensitivity}
+              onChange={(e) => setSensitivity(Number(e.target.value))}
+              className="flex-1 max-w-xs accent-amber-600"
+            />
+            <span className="text-amber-500 font-mono w-8">{sensitivity}</span>
+          </div>
+        </div>
+      )}
+
+      {/* HUD Stats - Responsive grid */}
+      <div className="px-3 py-2 md:px-6 md:py-3">
+        <div className="grid grid-cols-4 gap-2 md:gap-4 max-w-7xl mx-auto">
+          <div className="bg-zinc-900/90 border border-amber-600/30 p-2 md:p-4 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
+            <div className="absolute top-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-r border-amber-600" />
+            <div className="absolute bottom-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-l border-amber-600" />
+            <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
             
-            <div className="flex items-center gap-2 text-zinc-400 text-sm">
-              <Trophy className="w-4 h-4" />
-              PUNTEGGIO
+            <div className="flex items-center gap-1 md:gap-2 text-zinc-500 text-[10px] md:text-xs uppercase">
+              <Trophy className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="hidden md:inline">Punti</span>
             </div>
-            <div className="text-2xl font-mono font-bold text-amber-500">
+            <div className="text-lg md:text-2xl font-mono font-bold text-amber-500">
               {score.toLocaleString()}
             </div>
           </div>
 
-          <div className="bg-zinc-900/80 border border-amber-600/30 p-4 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-amber-600" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-amber-600" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-amber-600" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-amber-600" />
+          <div className="bg-zinc-900/90 border border-amber-600/30 p-2 md:p-4 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
+            <div className="absolute top-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-r border-amber-600" />
+            <div className="absolute bottom-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-l border-amber-600" />
+            <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
             
-            <div className="flex items-center gap-2 text-zinc-400 text-sm">
-              <Timer className="w-4 h-4" />
-              TEMPO
+            <div className="flex items-center gap-1 md:gap-2 text-zinc-500 text-[10px] md:text-xs uppercase">
+              <Timer className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="hidden md:inline">Tempo</span>
             </div>
-            <div className="text-2xl font-mono font-bold text-amber-500">
+            <div className="text-lg md:text-2xl font-mono font-bold text-amber-500">
               {formatTime(timeRemaining)}
             </div>
           </div>
 
-          <div className="bg-zinc-900/80 border border-amber-600/30 p-4 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-amber-600" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-amber-600" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-amber-600" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-amber-600" />
+          <div className="bg-zinc-900/90 border border-amber-600/30 p-2 md:p-4 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
+            <div className="absolute top-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-r border-amber-600" />
+            <div className="absolute bottom-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-l border-amber-600" />
+            <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
             
-            <div className="flex items-center gap-2 text-zinc-400 text-sm">
-              <Target className="w-4 h-4" />
-              PRECISIONE
+            <div className="flex items-center gap-1 md:gap-2 text-zinc-500 text-[10px] md:text-xs uppercase">
+              <Target className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="hidden md:inline">Prec</span>
             </div>
-            <div className="text-2xl font-mono font-bold text-amber-500">
-              {accuracy}%
+            <div className="text-lg md:text-2xl font-mono font-bold text-amber-500">
+              {accuracy}<span className="text-sm">%</span>
             </div>
           </div>
 
-          <div className="bg-zinc-900/80 border border-amber-600/30 p-4 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-2 h-2 border-t border-l border-amber-600" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t border-r border-amber-600" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b border-l border-amber-600" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b border-r border-amber-600" />
+          <div className="bg-zinc-900/90 border border-amber-600/30 p-2 md:p-4 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
+            <div className="absolute top-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-r border-amber-600" />
+            <div className="absolute bottom-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-l border-amber-600" />
+            <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
             
-            <div className="flex items-center gap-2 text-zinc-400 text-sm">
-              <CrosshairIcon className="w-4 h-4" />
-              REAZIONE
+            <div className="flex items-center gap-1 md:gap-2 text-zinc-500 text-[10px] md:text-xs uppercase">
+              <Zap className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="hidden md:inline">React</span>
             </div>
-            <div className="text-2xl font-mono font-bold text-amber-500">
-              {avgReaction}ms
+            <div className="text-lg md:text-2xl font-mono font-bold text-amber-500">
+              {avgReaction}<span className="text-xs md:text-sm">ms</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* Game Container */}
-      <div className="max-w-7xl mx-auto">
-        <div className="relative bg-zinc-950 border-2 border-amber-600/50 rounded-lg overflow-hidden">
-          {/* Corner decorations */}
-          <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-amber-600 z-10" />
-          <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-amber-600 z-10" />
-          <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-amber-600 z-10" />
-          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-amber-600 z-10" />
+      <div className="px-2 md:px-6 pb-2 md:pb-4">
+        <div className="max-w-7xl mx-auto relative">
+          <div className="relative bg-zinc-950 border-2 border-amber-600/50 rounded-lg overflow-hidden shadow-2xl shadow-amber-600/10">
+            {/* Corner decorations */}
+            <div className="absolute top-0 left-0 w-6 h-6 md:w-8 md:h-8 border-t-4 border-l-4 border-amber-600 z-10" />
+            <div className="absolute top-0 right-0 w-6 h-6 md:w-8 md:h-8 border-t-4 border-r-4 border-amber-600 z-10" />
+            <div className="absolute bottom-0 left-0 w-6 h-6 md:w-8 md:h-8 border-b-4 border-l-4 border-amber-600 z-10" />
+            <div className="absolute bottom-0 right-0 w-6 h-6 md:w-8 md:h-8 border-b-4 border-r-4 border-amber-600 z-10" />
 
-          {/* Canvas */}
-          <canvas
-            ref={canvasRef}
-            width={dimensions.width}
-            height={dimensions.height}
-            onClick={handleCanvasClick}
-            className="block mx-auto cursor-crosshair touch-none"
-            style={{ maxWidth: '100%', height: 'auto' }}
-          />
-
-          {/* Joystick overlay (solo durante il gioco) */}
-          {gameState === GameState.PLAYING && (
-            <div className="absolute bottom-8 left-8 w-32 h-32 md:w-40 md:h-40">
-              <div 
-                ref={joystickRef}
-                className="w-full h-full rounded-full bg-amber-600/20 border-2 border-amber-600/50"
-              />
-              <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-xs text-amber-500/60 uppercase tracking-wider">
-                Movimento
-              </div>
-            </div>
-          )}
-
-          {/* Tap to shoot area (destra) */}
-          {gameState === GameState.PLAYING && (
-            <div 
+            {/* Canvas */}
+            <canvas
+              ref={canvasRef}
+              width={dimensions.width}
+              height={dimensions.height}
               onClick={handleCanvasClick}
-              className="absolute bottom-8 right-8 w-24 h-24 md:w-32 md:h-32 rounded-full bg-red-600/20 border-2 border-red-600/50 flex items-center justify-center cursor-pointer hover:bg-red-600/30 transition-colors"
-            >
-              <div className="text-center">
-                <Target className="w-8 h-8 mx-auto text-red-500" />
-                <span className="text-xs text-red-500/80 uppercase mt-1 block">SPARA</span>
-              </div>
-            </div>
-          )}
+              onTouchStart={handleCanvasClick}
+              className="block mx-auto cursor-crosshair touch-none"
+              style={{ maxWidth: '100%', height: 'auto' }}
+            />
 
-          {/* Start Screen */}
-          {gameState === GameState.IDLE && (
-            <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
-              <div className="text-center">
-                <h2 className="text-4xl font-black uppercase mb-4">
-                  <span className="text-orange-600">Pronto</span> per l'allenamento?
-                </h2>
-                <p className="text-zinc-400 mb-8 max-w-md mx-auto">
-                  Usa il joystick per muovere il mirino. Tocca lo schermo per sparare ai bersagli rossi.
-                </p>
-                <button 
-                  onClick={actions.startGame}
+            {/* Joystick - solo durante il gioco */}
+            {gameState === GameState.PLAYING && (
+              <div className="absolute bottom-4 left-4 w-24 h-24 md:w-36 md:h-36 pointer-events-auto">
+                <div 
+                  ref={joystickRef}
+                  className="w-full h-full rounded-full bg-amber-600/10 border-2 border-amber-600/50 backdrop-blur"
+                />
+                <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-amber-500/60 uppercase tracking-wider whitespace-nowrap">
+                  Movimento
+                </div>
+              </div>
+            )}
+
+            {/* Fire button - solo durante il gioco */}
+            {gameState === GameState.PLAYING && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.shoot();
+                }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  actions.shoot();
+                }}
+                className="absolute bottom-6 right-6 w-20 h-20 md:w-28 md:h-28 rounded-full bg-red-600/20 border-4 border-red-600/60 flex items-center justify-center active:scale-95 active:bg-red-600/40 transition-all z-20 shadow-lg shadow-red-600/20"
+              >
+                <div className="text-center">
+                  <Target className="w-6 h-6 md:w-8 md:h-8 mx-auto text-red-500" />
+                  <span className="text-[10px] md:text-xs text-red-400 uppercase font-bold mt-1 block">SPARA</span>
+                </div>
+              </button>
+            )}
+
+            {/* Pause button */}
+            {gameState === GameState.PLAYING && (
+              <button 
+                onClick={actions.pauseGame}
+                className="absolute top-4 right-4 p-2 md:p-3 border border-amber-600/50 bg-black/50 text-amber-500 rounded hover:bg-amber-600/20 transition-all active:scale-95 z-20"
+              >
+                <Pause className="w-4 h-4 md:w-5 md:h-5" />
+              </button>
+            )}
+
+            {/* Start Screen */}
+            {gameState === GameState.IDLE && (
+              <div className="absolute inset-0 bg-black/90 flex items-center justify-center backdrop-blur-sm">
+                <div className="text-center px-4">
+                  <div className="mb-6 relative inline-block">
+                    <CrosshairIcon className="w-16 h-16 md:w-24 md:h-24 text-orange-600 mx-auto animate-pulse" />
+                    <div className="absolute inset-0 bg-orange-600/20 blur-xl rounded-full" />
+                  </div>
+                  <h2 className="text-2xl md:text-4xl font-black uppercase mb-2">
+                    <span className="text-orange-600">Tactical</span> Aim
+                  </h2>
+                  <p className="text-zinc-400 mb-6 text-sm md:text-base max-w-xs md:max-w-md mx-auto">
+                    Usa il joystick per muovere il mirino. Tocca il bottone rosso per sparare ai bersagli.
+                  </p>
                   
-                  className="bg-amber-600 hover:bg-amber-700 text-black font-bold text-lg px-8 py-6"
-                >
-                  <Play className="w-6 h-6 mr-2" />
-                  INIZIA ALLENAMENTO
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Pause Screen */}
-          {gameState === GameState.PAUSED && (
-            <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
-              <div className="text-center">
-                <h2 className="text-3xl font-black uppercase mb-6 text-amber-500">PAUSA</h2>
-                <div className="flex gap-4">
+                  <div className="grid grid-cols-2 gap-3 mb-6 text-xs text-zinc-500 max-w-xs mx-auto">
+                    <div className="bg-zinc-900/50 p-2 rounded border border-zinc-800">
+                      <Target className="w-4 h-4 mx-auto mb-1 text-amber-600" />
+                      Colpisci i bersagli
+                    </div>
+                    <div className="bg-zinc-900/50 p-2 rounded border border-zinc-800">
+                      <Timer className="w-4 h-4 mx-auto mb-1 text-amber-600" />
+                      60 secondi
+                    </div>
+                    <div className="bg-zinc-900/50 p-2 rounded border border-zinc-800">
+                      <TrendingUp className="w-4 h-4 mx-auto mb-1 text-amber-600" />
+                      Migliora il tuo K/D
+                    </div>
+                    <div className="bg-zinc-900/50 p-2 rounded border border-zinc-800">
+                      <Award className="w-4 h-4 mx-auto mb-1 text-amber-600" />
+                      Scala la classifica
+                    </div>
+                  </div>
+                  
                   <button 
-                    onClick={actions.resumeGame}
-                    className="bg-amber-600 hover:bg-amber-700 text-black"
+                    onClick={actions.startGame}
+                    className="bg-amber-600 hover:bg-amber-700 text-black font-bold text-base md:text-lg px-6 md:px-8 py-3 md:py-4 rounded-lg transition-all active:scale-95 shadow-lg shadow-amber-600/30"
                   >
-                    <Play className="w-5 h-5 mr-2" />
-                    Riprendi
-                  </button>
-                  <button 
-                    onClick={actions.endGame}
-                    className="px-4 py-2 border border-red-600 text-red-500 hover:bg-red-600/20 rounded"
-                  >
-                    Termina
+                    <Play className="w-5 h-5 inline mr-2" />
+                    INIZIA ALLENAMENTO
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Game Over Screen */}
-          {gameState === GameState.FINISHED && session && (
-            <div className="absolute inset-0 bg-black/90 flex items-center justify-center">
-              <div className="text-center max-w-md">
-                <h2 className="text-4xl font-black uppercase mb-2">
-                  <span className="text-orange-600">Allenamento</span> Completato
-                </h2>
-                
-                <div className="grid grid-cols-2 gap-4 my-8">
-                  <div className="bg-zinc-900/80 border border-amber-600/30 p-4">
-                    <div className="text-sm text-zinc-400">PUNTEGGIO</div>
-                    <div className="text-3xl font-mono font-bold text-amber-500">{score}</div>
+            {/* Pause Screen */}
+            {gameState === GameState.PAUSED && (
+              <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-sm">
+                <div className="text-center">
+                  <Pause className="w-12 h-12 md:w-16 md:h-16 text-amber-500 mx-auto mb-4" />
+                  <h2 className="text-2xl md:text-3xl font-black uppercase mb-6 text-amber-500">PAUSA</h2>
+                  <div className="flex gap-3 md:gap-4">
+                    <button 
+                      onClick={actions.resumeGame}
+                      className="bg-amber-600 hover:bg-amber-700 text-black font-bold px-4 md:px-6 py-2 md:py-3 rounded transition-all active:scale-95"
+                    >
+                      <Play className="w-4 h-4 md:w-5 md:h-5 inline mr-1 md:mr-2" />
+                      Riprendi
+                    </button>
+                    <button 
+                      onClick={actions.endGame}
+                      className="px-4 md:px-6 py-2 md:py-3 border border-red-600 text-red-500 hover:bg-red-600/20 rounded transition-all"
+                    >
+                      Termina
+                    </button>
                   </div>
-                  <div className="bg-zinc-900/80 border border-amber-600/30 p-4">
-                    <div className="text-sm text-zinc-400">PRECISIONE</div>
-                    <div className="text-3xl font-mono font-bold text-amber-500">{accuracy}%</div>
-                  </div>
-                  <div className="bg-zinc-900/80 border border-amber-600/30 p-4">
-                    <div className="text-sm text-zinc-400">BERSAGLI COLPITI</div>
-                    <div className="text-3xl font-mono font-bold text-amber-500">{session.targetsHit}</div>
-                  </div>
-                  <div className="bg-zinc-900/80 border border-amber-600/30 p-4">
-                    <div className="text-sm text-zinc-400">TEMPO MEDIO</div>
-                    <div className="text-3xl font-mono font-bold text-amber-500">{avgReaction}ms</div>
-                  </div>
-                </div>
-
-                <div className="flex gap-4 justify-center">
-                  <button 
-                    onClick={actions.resetGame}
-                    className="bg-amber-600 hover:bg-amber-700 text-black"
-                  >
-                    <RotateCcw className="w-5 h-5 mr-2" />
-                    Riprova
-                  </button>
-                  <button 
-                    onClick={onBack}
-                    className="px-4 py-2 border border-amber-600 text-amber-500 hover:bg-amber-600/20 rounded"
-                  >
-                    Esci
-                  </button>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
 
-        {/* Controls hint */}
-        <div className="mt-4 flex justify-between items-center text-sm text-zinc-500">
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full border border-amber-600/50 bg-amber-600/20" />
-              Joystick: muovi mirino
-            </span>
-            <span className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full border border-red-600/50 bg-red-600/20" />
-              Tappa: spara
-            </span>
+            {/* Game Over Screen */}
+            {gameState === GameState.FINISHED && session && (
+              <div className="absolute inset-0 bg-black/95 flex items-center justify-center backdrop-blur-sm overflow-y-auto">
+                <div className="text-center px-4 py-6 w-full max-w-md">
+                  <Award className="w-12 h-12 md:w-16 md:h-16 text-orange-500 mx-auto mb-3" />
+                  <h2 className="text-xl md:text-3xl font-black uppercase mb-1">
+                    <span className="text-orange-600">Sessione</span> Completata
+                  </h2>
+                  <p className="text-zinc-500 text-xs md:text-sm mb-4">Analisi performance in corso...</p>
+                  
+                  <div className="grid grid-cols-2 gap-2 md:gap-4 mb-4">
+                    <div className="bg-zinc-900/80 border border-amber-600/30 p-3 md:p-4 relative">
+                      <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
+                      <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
+                      <div className="text-[10px] md:text-xs text-zinc-400 uppercase">Punteggio</div>
+                      <div className="text-xl md:text-3xl font-mono font-bold text-amber-500">{score}</div>
+                    </div>
+                    <div className="bg-zinc-900/80 border border-amber-600/30 p-3 md:p-4 relative">
+                      <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
+                      <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
+                      <div className="text-[10px] md:text-xs text-zinc-400 uppercase">Precisione</div>
+                      <div className="text-xl md:text-3xl font-mono font-bold text-amber-500">{accuracy}%</div>
+                    </div>
+                    <div className="bg-zinc-900/80 border border-amber-600/30 p-3 md:p-4 relative">
+                      <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
+                      <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
+                      <div className="text-[10px] md:text-xs text-zinc-400 uppercase">Colpiti</div>
+                      <div className="text-xl md:text-3xl font-mono font-bold text-amber-500">{session.targetsHit}</div>
+                    </div>
+                    <div className="bg-zinc-900/80 border border-amber-600/30 p-3 md:p-4 relative">
+                      <div className="absolute top-0 left-0 w-1.5 h-1.5 md:w-2 md:h-2 border-t border-l border-amber-600" />
+                      <div className="absolute bottom-0 right-0 w-1.5 h-1.5 md:w-2 md:h-2 border-b border-r border-amber-600" />
+                      <div className="text-[10px] md:text-xs text-zinc-400 uppercase">Reazione</div>
+                      <div className="text-xl md:text-3xl font-mono font-bold text-amber-500">{avgReaction}<span className="text-xs md:text-sm">ms</span></div>
+                    </div>
+                  </div>
+
+                  {/* Performance Analysis */}
+                  <div className="bg-zinc-900/50 border border-zinc-700 p-3 rounded mb-4 text-left">
+                    <h3 className="text-amber-500 text-xs uppercase font-bold mb-2 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4" />
+                      Analisi Performance
+                    </h3>
+                    <ul className="text-xs text-zinc-400 space-y-1">
+                      {accuracy > 80 && <li className="text-green-400">• Eccellente precisione! Prova armi da cecchino</li>}
+                      {accuracy < 50 && <li className="text-yellow-400">• Precisione bassa. Allena con SMG a corto raggio</li>}
+                      {avgReaction < 250 && <li className="text-green-400">• Reazione fulminea! Ottimo per quickscope</li>}
+                      {avgReaction > 400 && <li className="text-yellow-400">• Reazione lenta. Prediligi copertura e posizionamento</li>}
+                      {accuracy >= 50 && accuracy <= 80 && avgReaction >= 250 && avgReaction <= 400 && (
+                        <li className="text-amber-400">• Performance bilanciata. Ottimo per assault rifle</li>
+                      )}
+                    </ul>
+                  </div>
+
+                  <div className="flex gap-3 justify-center">
+                    <button 
+                      onClick={actions.resetGame}
+                      className="bg-amber-600 hover:bg-amber-700 text-black font-bold px-4 md:px-6 py-2 md:py-3 rounded transition-all active:scale-95"
+                    >
+                      <RotateCcw className="w-4 h-4 md:w-5 md:h-5 inline mr-1 md:mr-2" />
+                      Riprova
+                    </button>
+                    <button 
+                      onClick={onBack}
+                      className="px-4 md:px-6 py-2 md:py-3 border border-amber-600 text-amber-500 hover:bg-amber-600/20 rounded transition-all"
+                    >
+                      Esci
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          
-          {gameState === GameState.PLAYING && (
-            <button 
-              onClick={actions.pauseGame}
-              className="px-3 py-1 text-sm border border-amber-600/50 text-amber-500 hover:bg-amber-600/20 rounded"
-            >
-              <Pause className="w-4 h-4 mr-2" />
-              Pausa
-            </button>
+
+          {/* Controls hint - solo quando non si gioca */}
+          {gameState !== GameState.PLAYING && gameState !== GameState.FINISHED && (
+            <div className="mt-3 flex justify-center items-center gap-4 text-[10px] md:text-xs text-zinc-600">
+              <span className="flex items-center gap-2">
+                <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-amber-600/50 bg-amber-600/20 flex items-center justify-center">
+                  <span className="text-amber-500">●</span>
+                </div>
+                Joystick per mirare
+              </span>
+              <span className="flex items-center gap-2">
+                <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-red-600/50 bg-red-600/20 flex items-center justify-center">
+                  <Target className="w-3 h-3 md:w-4 md:h-4 text-red-500" />
+                </div>
+                Tocca per sparare
+              </span>
+            </div>
           )}
         </div>
       </div>
