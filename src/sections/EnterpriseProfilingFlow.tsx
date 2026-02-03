@@ -27,7 +27,7 @@ export function EnterpriseProfilingFlow() {
   const [playerProfile, setPlayerProfile] = useState<PlayerProfile | null>(null);
   
   // Upload handlers
-  const handleProfileUpload = async (_file: File) => {
+  const handleProfileUpload = async (file: File) => {
     setIsAnalyzing(true);
     setError(null);
     
@@ -71,12 +71,6 @@ export function EnterpriseProfilingFlow() {
       const result = await recognizeWeaponAndRetrieve(imageBase64);
       
       setDetectedWeapons(prev => [...prev, result.detected]);
-      
-      // Se abbiamo 3+ armi, passiamo all'analisi
-      if (detectedWeapons.length >= 2) {
-        setCurrentStep('analysis');
-        runFullAnalysis();
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Errore riconoscimento arma');
     } finally {

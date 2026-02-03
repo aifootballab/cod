@@ -277,7 +277,6 @@ export async function generatePlayerProfile(
   // 6. Genera raccomandazioni
   const recommendations = generateRecommendations(
     personaType,
-    skillTier,
     weaponAnalysis,
     stats,
     detectedWeapons
@@ -324,7 +323,7 @@ function analyzeWeaponChoices(weapons: DetectedWeapon[]): WeaponAnalysis {
   const uniqueClasses = [...new Set(classes)];
   
   // Determina se gioca meta o no
-  const metaWeapons = ['MCW', 'Striker', 'RAM-7', 'AMR9', 'KATT-AMR']; // S-tier
+  const metaWeapons = ['MCW', 'Striker', 'RAM-7', 'AMR9']; // S-tier
   const metaCount = weapons.filter(w => 
     metaWeapons.some(mw => w.name.toLowerCase().includes(mw.toLowerCase()))
   ).length;
@@ -460,7 +459,7 @@ function calculateInvestment(weapons: DetectedWeapon[]): number {
     const tierScore = { 'S': 25, 'A': 20, 'B': 15, 'C': 10, 'D': 5 }[knowledge.meta_tier] || 10;
     return sum + tierScore;
   }, 0);
-  return Math.round(Math.min(100, diversityScore + metaScore / weapons.length));
+  return Math.round(Math.min(100, diversityScore + (metaScore / Math.max(weapons.length, 1))));
 }
 
 function predictChurn(stats: PlayerStats, engagement: number): number {
@@ -478,15 +477,14 @@ function predictChurn(stats: PlayerStats, engagement: number): number {
 
 function generateRecommendations(
   persona: string,
-  _skillTier: string,
   weaponAnalysis: WeaponAnalysis,
-  _stats: PlayerStats,
+  stats: PlayerStats,
   detectedWeapons: DetectedWeapon[]
 ): Recommendation[] {
   const recs: Recommendation[] = [];
   
   // 1. Raccomanda prossima arma basata su persona
-  const nextWeapon = suggestNextWeapon(persona, weaponAnalysis, _stats);
+  const nextWeapon = suggestNextWeapon(persona, weaponAnalysis, stats);
   recs.push({
     type: 'weapon',
     title: `Prova ${nextWeapon.name}`,
@@ -512,11 +510,11 @@ function generateRecommendations(
   }
   
   // 3. Content suggestion basata su persona
-  const contentRec = getContentRecommendation(persona, _stats);
+  const contentRec = getContentRecommendation(persona);
   if (contentRec) recs.push(contentRec);
   
   // 4. Tip personalizzato
-  const tip = getPersonalizedTip(_stats, weaponAnalysis);
+  const tip = getPersonalizedTip(stats, weaponAnalysis);
   if (tip) recs.push(tip);
   
   return recs;
@@ -525,7 +523,7 @@ function generateRecommendations(
 function suggestNextWeapon(
   persona: string,
   weaponAnalysis: WeaponAnalysis,
-  _stats: PlayerStats
+  stats: PlayerStats
 ): WeaponKnowledge {
   // Logica di raccomandazione basata su persona
   const candidates = WEAPON_KNOWLEDGE_BASE.filter(w => 
@@ -558,8 +556,8 @@ function suggestNextWeapon(
     }
     
     // Preferisci armi dello stesso tier di skill
-    if (_stats.kd_ratio > 1.5 && w.meta_tier === 'S') score += 20;
-    if (_stats.kd_ratio < 1.0 && w.meta_tier !== 'S') score += 20;
+    if (stats.kd_ratio > 1.5 && w.meta_tier === 'S') score += 20;
+    if (stats.kd_ratio < 1.0 && w.meta_tier !== 'S') score += 20;
     
     return { weapon: w, score };
   });
@@ -568,7 +566,7 @@ function suggestNextWeapon(
   return scored[0]?.weapon || WEAPON_KNOWLEDGE_BASE[0];
 }
 
-function getContentRecommendation(persona: string, stats: PlayerStats): Recommendation | null {
+function getContentRecommendation(persona: string): Recommendation | null {
   const recommendations: Record<string, Recommendation> = {
     meta_warrior: {
       type: 'content',
