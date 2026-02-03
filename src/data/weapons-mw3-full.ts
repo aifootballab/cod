@@ -33,6 +33,83 @@ export interface Weapon {
 }
 
 // ============================================
+// BATTLE RIFLES (categoria separata) - 5 armi
+// ============================================
+const BATTLE_RIFLES: Weapon[] = [
+  {
+    id: 'bas-b', name: 'BAS-B', category: 'assault',
+    description: 'Battle rifle 7.62. Danno pesante, semi-auto versatile.',
+    damage: { head: 75, chest: 50, stomach: 46, limbs: 46 },
+    fireRateRPM: 500, magazineSize: 20, reloadTime: 2.7,
+    range: { damageDropStart: 45, damageDropEnd: 90 },
+    adsTime: 290, sprintToFire: 250, tacSprintToFire: 320,
+    recoilVertical: 5, recoilHorizontal: 4,
+    tier: 'A', isMeta: true,
+    recommendedModes: ['warzone', 'multiplayer'],
+    difficulty: 'medium',
+    bestFor: ['Danno pesante', '2-shot potential', 'Versatile'],
+    metaAttachments: ['VT-7 Spiritfire', 'BAS-B Long', '3x Optic', 'Bruen Heavy', '30 Round'],
+    ttk: { close: 240, mid: 240, long: 360 }
+  },
+  {
+    id: 'soa-subverter', name: 'SOA Subverter', category: 'assault',
+    description: 'FAL moderna. Semi-auto veloce, controllabile.',
+    damage: { head: 72, chest: 48, stomach: 44, limbs: 44 },
+    fireRateRPM: 550, magazineSize: 20, reloadTime: 2.5,
+    range: { damageDropStart: 40, damageDropEnd: 80 },
+    adsTime: 275, sprintToFire: 235, tacSprintToFire: 305,
+    recoilVertical: 4, recoilHorizontal: 3,
+    tier: 'B', isMeta: false,
+    recommendedModes: ['multiplayer'],
+    difficulty: 'medium',
+    bestFor: ['Semi-auto veloce', 'Controllabile'],
+    ttk: { close: 218, mid: 218, long: 327 }
+  },
+  {
+    id: 'dtir-30-06', name: 'DTIR 30-06', category: 'assault',
+    description: 'Garand M1 moderna. Ping nostalgico, 2-shot.',
+    damage: { head: 90, chest: 60, stomach: 55, limbs: 55 },
+    fireRateRPM: 400, magazineSize: 8, reloadTime: 3.0,
+    range: { damageDropStart: 60, damageDropEnd: 120 },
+    adsTime: 310, sprintToFire: 260, tacSprintToFire: 330,
+    recoilVertical: 6, recoilHorizontal: 5,
+    tier: 'B', isMeta: false,
+    recommendedModes: ['multiplayer'],
+    difficulty: 'hard',
+    bestFor: ['Nostalgia', '2-shot kill', 'Garand'],
+    ttk: { close: 300, mid: 300, long: 450 }
+  },
+  {
+    id: 'marksman-receiver', name: 'MTZ-762 Receiver', category: 'assault',
+    description: 'MTZ in modalità battle rifle. Danno + range.',
+    damage: { head: 78, chest: 52, stomach: 48, limbs: 48 },
+    fireRateRPM: 480, magazineSize: 20, reloadTime: 2.8,
+    range: { damageDropStart: 50, damageDropEnd: 100 },
+    adsTime: 295, sprintToFire: 255, tacSprintToFire: 325,
+    recoilVertical: 5, recoilHorizontal: 4,
+    tier: 'C', isMeta: false,
+    recommendedModes: ['warzone'],
+    difficulty: 'medium',
+    bestFor: ['MTZ alternativa', 'Danno'],
+    ttk: { close: 250, mid: 250, long: 375 }
+  },
+  {
+    id: 'mcw-receiver', name: 'MCW 6.8 Receiver', category: 'assault',
+    description: 'MCW come battle rifle. Precisa, lenta.',
+    damage: { head: 69, chest: 46, stomach: 42, limbs: 42 },
+    fireRateRPM: 520, magazineSize: 20, reloadTime: 2.6,
+    range: { damageDropStart: 55, damageDropEnd: 110 },
+    adsTime: 285, sprintToFire: 245, tacSprintToFire: 315,
+    recoilVertical: 4, recoilHorizontal: 3,
+    tier: 'C', isMeta: false,
+    recommendedModes: ['multiplayer'],
+    difficulty: 'medium',
+    bestFor: ['Precisione', 'Controllabile'],
+    ttk: { close: 231, mid: 231, long: 346 }
+  }
+];
+
+// ============================================
 // ASSAULT RIFLES - 10 armi
 // ============================================
 const ASSAULT_RIFLES: Weapon[] = [
@@ -182,7 +259,7 @@ const ASSAULT_RIFLES: Weapon[] = [
 ];
 
 // ============================================
-// SMG - 8 armi
+// SMG - 12 armi (aggiunte mancanti)
 // ============================================
 const SMGS: Weapon[] = [
   {
@@ -296,6 +373,64 @@ const SMGS: Weapon[] = [
     difficulty: 'medium',
     bestFor: ['Burst'],
     ttk: { close: 133, mid: 200, long: 400 }
+  },
+  
+  // SMG mancanti aggiunti
+  {
+    id: 'fennec-45', name: 'Fennec 45 (Vector alt)', category: 'smg',
+    description: 'Vector alternativa. 1200 RPM estremo.',
+    damage: { head: 39, chest: 26, stomach: 24, limbs: 24 },
+    fireRateRPM: 1200, magazineSize: 30, reloadTime: 1.7,
+    range: { damageDropStart: 6, damageDropEnd: 12 },
+    adsTime: 180, sprintToFire: 100, tacSprintToFire: 140,
+    recoilVertical: 9, recoilHorizontal: 8,
+    tier: 'B', isMeta: false,
+    recommendedModes: ['multiplayer'],
+    difficulty: 'hard',
+    bestFor: ['RPM estremo', 'Melt istantaneo'],
+    ttk: { close: 100, mid: 200, long: 400 }
+  },
+  {
+    id: 'lachmann-sub', name: 'Lachmann Sub (MP5)', category: 'smg',
+    description: 'MP5 classica. Leggendaria, versatile.',
+    damage: { head: 48, chest: 32, stomach: 29, limbs: 29 },
+    fireRateRPM: 800, magazineSize: 30, reloadTime: 2.0,
+    range: { damageDropStart: 11, damageDropEnd: 22 },
+    adsTime: 200, sprintToFire: 120, tacSprintToFire: 160,
+    recoilVertical: 3, recoilHorizontal: 2,
+    tier: 'A', isMeta: true,
+    recommendedModes: ['multiplayer', 'warzone', 'ranked'],
+    difficulty: 'easy',
+    bestFor: ['Classica', 'Versatile', 'Nostalgia'],
+    ttk: { close: 150, mid: 300, long: 600 }
+  },
+  {
+    id: 'iso-45', name: 'ISO 45', category: 'smg',
+    description: 'SMG compatta. ADS veloce, controllabile.',
+    damage: { head: 45, chest: 30, stomach: 28, limbs: 28 },
+    fireRateRPM: 900, magazineSize: 30, reloadTime: 1.9,
+    range: { damageDropStart: 9, damageDropEnd: 18 },
+    adsTime: 190, sprintToFire: 110, tacSprintToFire: 150,
+    recoilVertical: 4, recoilHorizontal: 3,
+    tier: 'B', isMeta: false,
+    recommendedModes: ['multiplayer'],
+    difficulty: 'easy',
+    bestFor: ['ADS veloce', 'Controllabile'],
+    ttk: { close: 133, mid: 266, long: 532 }
+  },
+  {
+    id: 'vaznev-9k', name: 'Vaznev-9k', category: 'smg',
+    description: 'PP-19 Bizon. 64 colpi, no ricarica.',
+    damage: { head: 45, chest: 30, stomach: 28, limbs: 28 },
+    fireRateRPM: 750, magazineSize: 64, reloadTime: 2.2,
+    range: { damageDropStart: 10, damageDropEnd: 20 },
+    adsTime: 210, sprintToFire: 125, tacSprintToFire: 165,
+    recoilVertical: 3, recoilHorizontal: 2,
+    tier: 'B', isMeta: false,
+    recommendedModes: ['multiplayer'],
+    difficulty: 'easy',
+    bestFor: ['64 colpi', 'No ricarica', 'Sparare per ore'],
+    ttk: { close: 160, mid: 320, long: 640 }
   }
 ];
 
@@ -762,9 +897,34 @@ const MELEES: Weapon[] = [
 ];
 
 // ============================================
+// TACTICALS & LETHALS (equipaggiamento)
+// ============================================
+export const TACTICALS = [
+  { id: 'smoke', name: 'Smoke Grenade', use: 'Copertura visiva' },
+  { id: 'flash', name: 'Flash Grenade', use: 'Aceccare nemici' },
+  { id: 'stun', name: 'Stun Grenade', use: 'Rallentare movimento' },
+  { id: 'decoy', name: 'Decoy Grenade', use: 'Confondere radar' },
+  { id: 'snapshot', name: 'Snapshot', use: 'Spot nemici' },
+  { id: 'tear-gas', name: 'Tear Gas', use: 'Area denial' },
+  { id: 'heartbeat', name: 'Heartbeat Sensor', use: 'Radar portatile' }
+];
+
+export const LETHALS = [
+  { id: 'frag', name: 'Frag Grenade', damage: 150, radius: 8 },
+  { id: 'semtex', name: 'Semtex', damage: 140, radius: 7, sticky: true },
+  { id: 'c4', name: 'C4', damage: 200, radius: 10, remote: true },
+  { id: 'claymore', name: 'Claymore', damage: 180, radius: 5, trap: true },
+  { id: 'thermite', name: 'Thermite', damage: 100, radius: 4, burn: true },
+  { id: 'molotov', name: 'Molotov', damage: 120, radius: 6, burn: true },
+  { id: 'throwing-knife', name: 'Throwing Knife', damage: 200, instantKill: true },
+  { id: 'drill-charge', name: 'Drill Charge', damage: 250, wallbang: true }
+];
+
+// ============================================
 // EXPORT COMPLETO
 // ============================================
 export const ALL_WEAPONS: Weapon[] = [
+  ...BATTLE_RIFLES,
   ...ASSAULT_RIFLES,
   ...SMGS,
   ...LMGS,
@@ -776,10 +936,11 @@ export const ALL_WEAPONS: Weapon[] = [
   ...MELEES
 ];
 
-// Statistiche
+// Statistiche complete
 export const WEAPON_STATS = {
   total: ALL_WEAPONS.length,
   byCategory: {
+    battleRifle: BATTLE_RIFLES.length,
     assault: ASSAULT_RIFLES.length,
     smg: SMGS.length,
     lmg: LMGS.length,
@@ -791,7 +952,9 @@ export const WEAPON_STATS = {
     melee: MELEES.length
   },
   metaCount: ALL_WEAPONS.filter(w => w.isMeta).length,
-  sTier: ALL_WEAPONS.filter(w => w.tier === 'S').length
+  sTier: ALL_WEAPONS.filter(w => w.tier === 'S').length,
+  tacticals: TACTICALS.length,
+  lethals: LETHALS.length
 };
 
 // Helper functions
