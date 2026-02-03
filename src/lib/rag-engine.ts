@@ -4,30 +4,14 @@
 // ============================================
 
 import { supabase } from './supabase';
-import { generateEmbedding } from './openai';
-import type { PlayerStats, WeaponBuild } from '@/types';
-
-// Knowledge Base armi (popolato da JSON/crawling)
-const WEAPON_DB: WeaponKnowledge[] = [
-  // Popolato dinamicamente o importato da JSON
-];
-
-interface WeaponKnowledge {
-  id: string;
-  name: string;
-  category: string;
-  description: string;
-  stats: {
-    damage: number;
-    fire_rate: number;
-    accuracy: number;
-    range: number;
-    mobility: number;
-    control: number;
-  };
-  meta_tier: 'S' | 'A' | 'B' | 'C' | 'D';
-  playstyle_tags: string[];
-}
+import type { PlayerStats } from '@/types';
+import { 
+  WEAPON_KNOWLEDGE_BASE, 
+  ATTACHMENT_KNOWLEDGE_BASE,
+  findSimilarWeapons,
+  type WeaponKnowledge,
+  type AttachmentKnowledge 
+} from '@/data/weaponKnowledgeBase';
 
 // ============================================
 // 1. WEAPON RECOGNITION + RETRIEVAL
@@ -46,37 +30,43 @@ export interface DetectedAttachment {
   effects: string[];
 }
 
+export interface WeaponRecognitionResult {
+  detected: DetectedWeapon;
+  similarWeapons: WeaponKnowledge[];
+  suggestedAttachments: AttachmentKnowledge[];
+  knowledgeBaseMatch?: WeaponKnowledge;
+}
+
 /**
  * Fase 1: OCR + Retrieval
  * Da screenshot arma -> Trova nel DB -> Restituisci dati completi
  */
 export async function recognizeWeaponAndRetrieve(
   imageBase64: string
-): Promise<{
-  detected: DetectedWeapon;
-  similarWeapons: WeaponKnowledge[];
-  suggestedAttachments: any[];
-}> {
+): Promise<WeaponRecognitionResult> {
   // 1. OCR con Vision per estrarre nome arma e attachments
   const ocrResult = await extractWeaponFromImage(imageBase64);
   
-  // 2. Genera embedding della descrizione trovata
-  const searchQuery = `${ocrResult.weaponName} ${ocrResult.category} ${ocrResult.attachments.join(' ')}`;
-  const embedding = await generateEmbedding(searchQuery);
+  // 2. Cerca nel knowledge base locale
+  const knowledgeMatch = WEAPON_KNOWLEDGE_BASE.find(
+    w => w.name.toLowerCase() === ocrResult.weaponName.toLowerCase()
+  );
   
-  // 3. RAG: Cerca armi simili nel vector DB
-  const { data: similarWeapons } = await supabase.rpc('search_similar_weapons', {
-    query_embedding: embedding,
-    match_threshold: 0.7,
-    match_count: 5
-  });
+  // 3. Trova armi simili (fallback locale se Supabase non disponibile)
+  let similarWeapons: WeaponKnowledge[] = [];
+  try {
+    similarWeapons = findSimilarWeapons(
+      ocrResult.weaponName, 
+      ocrResult.playstyleHint
+    );
+  } catch (e) {
+    console.log('Using local similarity search');
+  }
   
-  // 4. Recupera best match
-  const bestMatch = similarWeapons?.[0];
-  
-  // 5. Cerca attachments consigliati per quell'arma
-  const suggestedAttachments = await findOptimalAttachments(
-    bestMatch?.name || ocrResult.weaponName,
+  // 4. Cerca attachments consigliati
+  const suggestedAttachments = findOptimalAttachments(
+    ocrResult.weaponName,
+    ocrResult.attachments,
     ocrResult.playstyleHint
   );
   
@@ -84,20 +74,21 @@ export async function recognizeWeaponAndRetrieve(
     detected: {
       name: ocrResult.weaponName,
       confidence: ocrResult.confidence,
-      category: ocrResult.category,
-      attachments: ocrResult.attachments.map((name, i) => ({
+      category: ocrResult.category || knowledgeMatch?.category || 'unknown',
+      attachments: ocrResult.attachments.map((name) => ({
         slot: guessAttachmentSlot(name),
         name,
-        effects: [] // Popolato dal DB
+        effects: getAttachmentEffects(name)
       }))
     },
-    similarWeapons: similarWeapons || [],
-    suggestedAttachments
+    similarWeapons,
+    suggestedAttachments,
+    knowledgeBaseMatch: knowledgeMatch
   };
 }
 
 /**
- * OCR specifico per armi COD
+ * OCR specifico per armi COD usando GPT-4 Vision
  */
 async function extractWeaponFromImage(imageBase64: string): Promise<{
   weaponName: string;
@@ -107,6 +98,10 @@ async function extractWeaponFromImage(imageBase64: string): Promise<{
   confidence: number;
 }> {
   const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+  
+  if (!OPENAI_API_KEY) {
+    throw new Error('OpenAI API key not configured');
+  }
   
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -119,33 +114,42 @@ async function extractWeaponFromImage(imageBase64: string): Promise<{
       messages: [
         {
           role: 'system',
-          content: `You are analyzing a Call of Duty weapon loadout screenshot.
-          Identify:
-          1. Weapon name (e.g., "MCW", "Striker", "AMR9")
-          2. Weapon category (assault_rifle, smg, lmg, sniper, shotgun, marksman)
-          3. All visible attachments
-          4. Estimated playstyle based on build (aggressive, tactical, camp, rusher)
+          content: `You are analyzing a Call of Duty weapon loadout screenshot from MW3 or Warzone.
           
-          Return JSON:
+          Identify from the visible UI:
+          1. Weapon name (e.g., "MCW", "Striker", "AMR9", "KATT-AMR")
+          2. Weapon category (assault_rifle, smg, lmg, sniper, shotgun, marksman)
+          3. All visible attachment names in the slots
+          4. Estimated playstyle based on build (aggressive, tactical, camp, rusher, sniper)
+          
+          Be precise. If uncertain, use lower confidence.
+          
+          Return ONLY this JSON format:
           {
-            "weaponName": "string",
-            "category": "string", 
-            "attachments": ["string"],
-            "playstyleHint": "string",
+            "weaponName": "exact name",
+            "category": "category",
+            "attachments": ["attachment1", "attachment2"],
+            "playstyleHint": "playstyle",
             "confidence": 0.0-1.0
           }`
         },
         {
           role: 'user',
           content: [
-            { type: 'text', text: 'Extract weapon info from this COD screenshot' },
+            { type: 'text', text: 'Extract weapon info from this COD screenshot. Be precise.' },
             { type: 'image_url', image_url: { url: imageBase64 } }
           ]
         }
       ],
-      max_tokens: 500
+      max_tokens: 500,
+      temperature: 0.1
     })
   });
+  
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenAI API error: ${error}`);
+  }
   
   const data = await response.json();
   const content = data.choices[0]?.message?.content;
@@ -159,26 +163,60 @@ async function extractWeaponFromImage(imageBase64: string): Promise<{
 }
 
 function guessAttachmentSlot(attachmentName: string): string {
-  // Euristiche base
-  if (attachmentName.toLowerCase().includes('scope') || attachmentName.toLowerCase().includes('optic')) return 'optic';
-  if (attachmentName.toLowerCase().includes('barrel')) return 'barrel';
-  if (attachmentName.toLowerCase().includes('muzzle')) return 'muzzle';
-  if (attachmentName.toLowerCase().includes('mag') || attachmentName.toLowerCase().includes('round')) return 'magazine';
-  if (attachmentName.toLowerCase().includes('grip')) return 'grip';
-  if (attachmentName.toLowerCase().includes('stock')) return 'stock';
+  const lower = attachmentName.toLowerCase();
+  if (lower.includes('scope') || lower.includes('optic') || lower.includes('reflector') || lower.includes('sight')) return 'optic';
+  if (lower.includes('barrel') || lower.includes('long') || lower.includes('short')) return 'barrel';
+  if (lower.includes('muzzle') || lower.includes('suppressor') || lower.includes('flash')) return 'muzzle';
+  if (lower.includes('mag') || lower.includes('round') || lower.includes('drum')) return 'magazine';
+  if (lower.includes('grip') || lower.includes('pivot') || lower.includes('tac')) return 'grip';
+  if (lower.includes('stock') || lower.includes('no stock')) return 'stock';
+  if (lower.includes('laser')) return 'laser';
   return 'unknown';
 }
 
-async function findOptimalAttachments(weaponName: string, playstyle: string): Promise<any[]> {
-  // Query al DB per attachments ottimali
-  const { data } = await supabase
-    .from('attachment_knowledge')
-    .select('*')
-    .contains('compatible_weapons', [weaponName])
-    .order('meta_score', { ascending: false })
-    .limit(10);
-    
-  return data || [];
+function getAttachmentEffects(attachmentName: string): string[] {
+  const attachment = ATTACHMENT_KNOWLEDGE_BASE.find(
+    a => a.name.toLowerCase().includes(attachmentName.toLowerCase()) ||
+         attachmentName.toLowerCase().includes(a.name.toLowerCase())
+  );
+  return attachment ? [...attachment.pros, ...attachment.cons.map(c => `-${c}`)] : [];
+}
+
+function findOptimalAttachments(
+  weaponName: string, 
+  detectedAttachments: string[],
+  playstyle?: string
+): AttachmentKnowledge[] {
+  // Filtra attachments compatibili con l'arma
+  const compatible = ATTACHMENT_KNOWLEDGE_BASE.filter(a => 
+    a.compatible_weapons.some(w => 
+      weaponName.toLowerCase().includes(w.toLowerCase()) ||
+      w.toLowerCase().includes(weaponName.toLowerCase())
+    )
+  );
+  
+  // Se abbiamo un playstyle, ordina in base alla compatibilità
+  if (playstyle) {
+    return compatible
+      .filter(a => !detectedAttachments.some(da => 
+        a.name.toLowerCase().includes(da.toLowerCase())
+      ))
+      .sort((a, b) => {
+        // Preferisci attachments che matchano il playstyle
+        const aMatchesPlaystyle = a.pros.some(p => 
+          p.toLowerCase().includes(playstyle.toLowerCase())
+        );
+        const bMatchesPlaystyle = b.pros.some(p => 
+          p.toLowerCase().includes(playstyle.toLowerCase())
+        );
+        if (aMatchesPlaystyle && !bMatchesPlaystyle) return -1;
+        if (!aMatchesPlaystyle && bMatchesPlaystyle) return 1;
+        return b.meta_score - a.meta_score;
+      })
+      .slice(0, 5);
+  }
+  
+  return compatible.sort((a, b) => b.meta_score - a.meta_score).slice(0, 5);
 }
 
 // ============================================
@@ -198,10 +236,17 @@ export interface PlayerProfile {
 }
 
 export interface Recommendation {
-  type: 'weapon' | 'content' | 'tip';
+  type: 'weapon' | 'content' | 'tip' | 'next_unlock';
   title: string;
   description: string;
   confidence: number;
+}
+
+interface WeaponAnalysis {
+  weaponClasses: string[];
+  metaRatio: number;
+  versatility: number;
+  primaryPlaystyle: string;
 }
 
 /**
@@ -230,14 +275,14 @@ export async function generatePlayerProfile(
   const churnRisk = predictChurn(stats, engagementScore);
   
   // 6. Genera raccomandazioni
-  const recommendations = await generateRecommendations(
+  const recommendations = generateRecommendations(
     personaType,
     skillTier,
     weaponAnalysis,
-    stats
+    stats,
+    detectedWeapons
   );
   
-  // 7. Salva nel DB con embedding
   const profile: PlayerProfile = {
     id: crypto.randomUUID(),
     personaType,
@@ -250,16 +295,22 @@ export async function generatePlayerProfile(
     recommendations
   };
   
-  // Genera embedding del profilo per ricerca simili
-  const profileText = `${personaType} ${skillTier} ${playstyleTags.join(' ')} ${weaponAnalysis.weaponClasses.join(' ')}`;
-  const profileEmbedding = await generateEmbedding(profileText);
-  
-  await supabase.from('player_profiles').insert({
-    ...profile,
-    extracted_stats: stats,
-    detected_loadouts: detectedWeapons,
-    profile_embedding: profileEmbedding
-  });
+  // Salva nel DB se disponibile
+  try {
+    await supabase.from('player_profiles').insert({
+      id: profile.id,
+      persona_type: personaType,
+      skill_tier: skillTier,
+      playstyle_tags: playstyleTags,
+      weapon_preferences: profile.weaponPreferences,
+      engagement_score: engagementScore,
+      investment_score: investmentScore,
+      churn_risk: churnRisk,
+      extracted_stats: stats
+    });
+  } catch (e) {
+    console.log('Supabase not available, profile not saved');
+  }
   
   return profile;
 }
@@ -268,29 +319,41 @@ export async function generatePlayerProfile(
 // 3. ANALISI PATTERN
 // ============================================
 
-function analyzeWeaponChoices(weapons: DetectedWeapon[]) {
+function analyzeWeaponChoices(weapons: DetectedWeapon[]): WeaponAnalysis {
   const classes = weapons.map(w => w.category);
   const uniqueClasses = [...new Set(classes)];
   
   // Determina se gioca meta o no
-  const metaWeapons = ['MCW', 'Striker', 'RAM-7', 'AMR9']; // S-tier
-  const metaCount = weapons.filter(w => metaWeapons.includes(w.name)).length;
-  const metaRatio = metaCount / weapons.length;
+  const metaWeapons = ['MCW', 'Striker', 'RAM-7', 'AMR9', 'KATT-AMR']; // S-tier
+  const metaCount = weapons.filter(w => 
+    metaWeapons.some(mw => w.name.toLowerCase().includes(mw.toLowerCase()))
+  ).length;
+  const metaRatio = weapons.length > 0 ? metaCount / weapons.length : 0;
   
   // Determina versatilità
   const versatility = uniqueClasses.length;
+  
+  // Determina playstyle primario dagli attachments
+  const hasLongRangeOptic = weapons[0]?.attachments.some(a => 
+    a.slot === 'optic' && (a.name.includes('4x') || a.name.includes('Corvus') || a.name.includes('scope'))
+  );
+  const hasAggressiveSetup = weapons[0]?.attachments.some(a =>
+    a.name.toLowerCase().includes('no stock') || a.name.toLowerCase().includes('short barrel')
+  );
+  
+  let primaryPlaystyle = 'balanced';
+  if (hasLongRangeOptic) primaryPlaystyle = 'tactical';
+  else if (hasAggressiveSetup) primaryPlaystyle = 'aggressive';
   
   return {
     weaponClasses: uniqueClasses,
     metaRatio,
     versatility,
-    primaryPlaystyle: weapons[0]?.attachments.some(a => 
-      a.name.toLowerCase().includes('scope') || a.name.toLowerCase().includes('4x')
-    ) ? 'tactical' : 'aggressive'
+    primaryPlaystyle
   };
 }
 
-function derivePlaystyle(stats: PlayerStats, weaponAnalysis: any): string[] {
+function derivePlaystyle(stats: PlayerStats, weaponAnalysis: WeaponAnalysis): string[] {
   const tags: string[] = [];
   
   // Da stats
@@ -299,23 +362,31 @@ function derivePlaystyle(stats: PlayerStats, weaponAnalysis: any): string[] {
   if (stats.spm > 350) tags.push('aggressive');
   if (stats.spm < 250) tags.push('tactical');
   if (stats.win_rate > 55) tags.push('team_player');
+  if (stats.headshot_percent > 25) tags.push('headhunter');
   
   // Da armi
   if (weaponAnalysis.metaRatio > 0.7) tags.push('meta_follower');
-  else if (weaponAnalysis.metaRatio < 0.3) tags.push('hipster');
+  else if (weaponAnalysis.metaRatio < 0.3 && stats.kd_ratio > 1.0) tags.push('hipster');
   
   if (weaponAnalysis.versatility > 3) tags.push('versatile');
   else tags.push('specialist');
   
   if (weaponAnalysis.primaryPlaystyle === 'tactical') tags.push('methodical');
-  else tags.push('rusher');
+  if (weaponAnalysis.primaryPlaystyle === 'aggressive') tags.push('rusher');
+  
+  // Da classe arma
+  if (weaponAnalysis.weaponClasses.includes('sniper')) tags.push('sniper');
+  if (weaponAnalysis.weaponClasses.includes('smg')) tags.push('close_quarters');
+  if (weaponAnalysis.weaponClasses.includes('lmg')) tags.push('support');
   
   return [...new Set(tags)];
 }
 
 function calculateSkillTier(stats: PlayerStats): string {
+  // Formula: K/D * 100 + Accuracy * 10 + SPM / 10
   const score = (stats.kd_ratio * 100) + (stats.accuracy * 10) + (stats.spm / 10);
   
+  // Ranked play tiers based on SBMM
   if (score > 500) return 'iridescent';
   if (score > 450) return 'crimson';
   if (score > 400) return 'diamond';
@@ -327,109 +398,241 @@ function calculateSkillTier(stats: PlayerStats): string {
 
 function classifyPersona(
   stats: PlayerStats, 
-  weaponAnalysis: any,
+  weaponAnalysis: WeaponAnalysis,
   tags: string[]
 ): string {
-  // Algoritmo di classificazione persona
-  if (tags.includes('meta_follower') && stats.play_time_hours > 200) {
+  // Algoritmo di classificazione persona basato su dati reali
+  
+  // META WARRIOR: Alta dedizione + usa meta
+  if (tags.includes('meta_follower') && stats.play_time_hours > 200 && stats.kd_ratio > 1.2) {
     return 'meta_warrior';
   }
-  if (tags.includes('hipster') && stats.kd_ratio > 1.2) {
+  
+  // SKILLED HIPSTER: Buono ma non segue meta
+  if (tags.includes('hipster') && stats.kd_ratio > 1.3 && weaponAnalysis.metaRatio < 0.4) {
     return 'skilled_hipster';
   }
-  if (weaponAnalysis.versatility > 4 && stats.play_time_hours > 300) {
+  
+  // COMPLETIONIST: Tante armi + tanto tempo
+  if (weaponAnalysis.versatility >= 4 && stats.play_time_hours > 300) {
     return 'completionist';
   }
-  if (stats.spm > 400 && tags.includes('rusher')) {
+  
+  // AGGRESSIVE GRINDER: SPM alto + rusher
+  if (stats.spm > 400 && tags.includes('rusher') && stats.kd_ratio > 1.0) {
     return 'aggressive_grinder';
   }
-  if (stats.accuracy > 30 && tags.includes('methodical')) {
+  
+  // TACTICAL SNIPER: Accuracy alta + methodical
+  if (stats.accuracy > 30 && tags.includes('methodical') && stats.kd_ratio > 1.2) {
     return 'tactical_sniper';
   }
-  return 'casual_regular';
+  
+  // SUPPORT PLAYER: LMG + team oriented
+  if (weaponAnalysis.weaponClasses.includes('lmg') && tags.includes('team_player')) {
+    return 'support_player';
+  }
+  
+  // CASUAL REGULAR: Default
+  if (stats.play_time_hours < 50) {
+    return 'casual_rookie';
+  }
+  
+  return 'regular_player';
 }
 
 function calculateEngagement(stats: PlayerStats): number {
-  // 0-100 score basato su tempo gioco e partite
+  // Score 0-100 basato su tempo gioco e attività
   const hoursScore = Math.min(stats.play_time_hours / 10, 50);
-  const matchesScore = Math.min((stats.total_kills || 0) / 1000, 50);
-  return Math.round(hoursScore + matchesScore);
+  const matchesScore = Math.min((stats.total_kills || 0) / 1000, 30);
+  const levelScore = Math.min((stats.level || 1) / 2, 20);
+  return Math.round(Math.min(100, hoursScore + matchesScore + levelScore));
 }
 
 function calculateInvestment(weapons: DetectedWeapon[]): number {
-  // Stima investimento basato su camo/blueprint rari
-  // Placeholder: implementare riconoscimento camo
-  return Math.round(weapons.length * 15); // 15 punti per arma diversa
+  // Stima investimento basato su diversità e meta score
+  const diversityScore = Math.min(weapons.length * 10, 40);
+  const metaScore = weapons.reduce((sum, w) => {
+    const knowledge = WEAPON_KNOWLEDGE_BASE.find(kb => 
+      kb.name.toLowerCase() === w.name.toLowerCase()
+    );
+    if (!knowledge) return sum;
+    const tierScore = { 'S': 25, 'A': 20, 'B': 15, 'C': 10, 'D': 5 }[knowledge.meta_tier] || 10;
+    return sum + tierScore;
+  }, 0);
+  return Math.round(Math.min(100, diversityScore + metaScore / weapons.length));
 }
 
 function predictChurn(stats: PlayerStats, engagement: number): number {
-  // Alto investimento = low churn
-  if (stats.play_time_hours > 300) return 10;
-  if (stats.play_time_hours < 20) return 80;
-  if (engagement < 30) return 60;
-  return 30;
+  // Prediction basata su engagement e pattern
+  if (stats.play_time_hours > 300 && engagement > 70) return 5;  // Hardcore, molto basso
+  if (stats.play_time_hours > 150 && engagement > 50) return 15; // Regular, basso
+  if (stats.play_time_hours < 20) return 85; // Nuovo, alto rischio
+  if (engagement < 30) return 70; // Low engagement, medio-alto
+  return 40; // Default
 }
 
 // ============================================
 // 4. GENERAZIONE RACCOMANDAZIONI
 // ============================================
 
-async function generateRecommendations(
+function generateRecommendations(
   persona: string,
   skillTier: string,
-  weaponAnalysis: any,
-  stats: PlayerStats
-): Promise<Recommendation[]> {
+  weaponAnalysis: WeaponAnalysis,
+  stats: PlayerStats,
+  detectedWeapons: DetectedWeapon[]
+): Recommendation[] {
   const recs: Recommendation[] = [];
   
-  // Raccomanda prossima arma
-  const nextWeapon = await suggestNextWeapon(persona, weaponAnalysis, stats);
+  // 1. Raccomanda prossima arma basata su persona
+  const nextWeapon = suggestNextWeapon(persona, weaponAnalysis, stats);
   recs.push({
     type: 'weapon',
-    title: `Prova ${nextWeapon}`,
-    description: `Adatta al tuo stile ${persona}`,
+    title: `Prova ${nextWeapon.name}`,
+    description: `Arma ${nextWeapon.meta_tier}-tier adatta al tuo stile ${persona.replace('_', ' ')}`,
     confidence: 0.85
   });
   
-  // Content suggestion
-  if (persona === 'meta_warrior') {
-    recs.push({
-      type: 'content',
-      title: 'Meta Tier List Aggiornata',
-      description: 'Guarda le ultime tier list per restare ahead',
-      confidence: 0.90
-    });
+  // 2. Suggerimento attachments
+  if (detectedWeapons[0]) {
+    const attachments = findOptimalAttachments(
+      detectedWeapons[0].name, 
+      detectedWeapons[0].attachments.map(a => a.name),
+      weaponAnalysis.primaryPlaystyle
+    );
+    if (attachments[0]) {
+      recs.push({
+        type: 'next_unlock',
+        title: `Sblocca ${attachments[0].name}`,
+        description: attachments[0].description,
+        confidence: 0.80
+      });
+    }
   }
   
-  // Tip personalizzato
-  if (stats.kd_ratio < 1.0) {
-    recs.push({
-      type: 'tip',
-      title: 'Migliora il posizionamento',
-      description: 'Con il tuo setup attuale, prova a giocare più cover-to-cover',
-      confidence: 0.75
-    });
-  }
+  // 3. Content suggestion basata su persona
+  const contentRec = getContentRecommendation(persona, stats);
+  if (contentRec) recs.push(contentRec);
+  
+  // 4. Tip personalizzato
+  const tip = getPersonalizedTip(stats, weaponAnalysis);
+  if (tip) recs.push(tip);
   
   return recs;
 }
 
-async function suggestNextWeapon(
+function suggestNextWeapon(
   persona: string,
-  weaponAnalysis: any,
+  weaponAnalysis: WeaponAnalysis,
   stats: PlayerStats
-): Promise<string> {
-  // Usa RAG per trovare arma simile ma diversa
-  const query = `weapon for ${persona} playstyle similar to ${weaponAnalysis.weaponClasses.join(' ')}`;
-  const embedding = await generateEmbedding(query);
+): WeaponKnowledge {
+  // Logica di raccomandazione basata su persona
+  const candidates = WEAPON_KNOWLEDGE_BASE.filter(w => 
+    !weaponAnalysis.weaponClasses.includes(w.category)
+  );
   
-  const { data } = await supabase.rpc('search_similar_weapons', {
-    query_embedding: embedding,
-    match_threshold: 0.6,
-    match_count: 3
+  // Scoring basato su persona
+  const scored = candidates.map(w => {
+    let score = 0;
+    
+    switch (persona) {
+      case 'meta_warrior':
+        if (w.meta_tier === 'S') score += 50;
+        if (w.meta_tier === 'A') score += 30;
+        break;
+      case 'skilled_hipster':
+        if (w.meta_tier === 'B' || w.meta_tier === 'C') score += 40;
+        if (w.playstyle_tags.includes('high_skill')) score += 20;
+        break;
+      case 'aggressive_grinder':
+        if (w.playstyle_tags.includes('aggressive')) score += 40;
+        if (w.stats.fire_rate > 80) score += 20;
+        break;
+      case 'tactical_sniper':
+        if (w.category === 'sniper' || w.category === 'marksman') score += 50;
+        if (w.stats.accuracy > 80) score += 20;
+        break;
+      default:
+        if (w.meta_tier === 'A' || w.meta_tier === 'B') score += 30;
+    }
+    
+    // Preferisci armi dello stesso tier di skill
+    if (stats.kd_ratio > 1.5 && w.meta_tier === 'S') score += 20;
+    if (stats.kd_ratio < 1.0 && w.meta_tier !== 'S') score += 20;
+    
+    return { weapon: w, score };
   });
   
-  return data?.[0]?.name || 'MCW';
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.weapon || WEAPON_KNOWLEDGE_BASE[0];
+}
+
+function getContentRecommendation(persona: string, stats: PlayerStats): Recommendation | null {
+  const recommendations: Record<string, Recommendation> = {
+    meta_warrior: {
+      type: 'content',
+      title: 'Meta Tier List - Stagione Corrente',
+      description: 'Resta ahead della curva con le ultime tier list aggiornate',
+      confidence: 0.90
+    },
+    aggressive_grinder: {
+      type: 'content',
+      title: 'Advanced Movement Techniques',
+      description: 'Slide cancel, bunny hop, e movement avanzato per rushare meglio',
+      confidence: 0.85
+    },
+    tactical_sniper: {
+      type: 'content',
+      title: 'Positioning Guide - Map Control',
+      description: 'Le migliori posizioni per ogni mappa di Warzone',
+      confidence: 0.88
+    },
+    casual_rookie: {
+      type: 'content',
+      title: 'Beginner Friendly Loadouts',
+      description: 'Setup facili per iniziare a migliorare subito',
+      confidence: 0.95
+    }
+  };
+  
+  return recommendations[persona] || {
+    type: 'content',
+    title: 'Improve Your Game Sense',
+    description: 'General tips per il tuo livello di skill',
+    confidence: 0.70
+  };
+}
+
+function getPersonalizedTip(stats: PlayerStats, weaponAnalysis: WeaponAnalysis): Recommendation | null {
+  if (stats.kd_ratio < 0.8) {
+    return {
+      type: 'tip',
+      title: 'Focus sul posizionamento',
+      description: 'Il tuo K/D suggerisce di giocare più cover-to-cover. Evita gli open field.',
+      confidence: 0.80
+    };
+  }
+  
+  if (stats.accuracy < 20 && stats.spm > 300) {
+    return {
+      type: 'tip',
+      title: 'Calma la mira',
+      description: 'Sei aggressivo ma la precisione è bassa. Prova aim training prima di rushare.',
+      confidence: 0.75
+    };
+  }
+  
+  if (weaponAnalysis.versatility < 2 && stats.play_time_hours > 100) {
+    return {
+      type: 'tip',
+      title: 'Espandi il tuo arsenal',
+      description: 'Usi poche armi. Prova nuove classi per adattarti a diverse situazioni.',
+      confidence: 0.70
+    };
+  }
+  
+  return null;
 }
 
 // ============================================
@@ -440,10 +643,14 @@ export async function findLookalikeAudience(
   targetProfileId: string,
   count: number = 100
 ): Promise<any[]> {
-  const { data } = await supabase.rpc('find_similar_players', {
-    player_id: targetProfileId,
-    match_count: count
-  });
-  
-  return data || [];
+  try {
+    const { data } = await supabase.rpc('find_similar_players', {
+      player_id: targetProfileId,
+      match_count: count
+    });
+    return data || [];
+  } catch (e) {
+    console.log('Supabase RPC not available');
+    return [];
+  }
 }
