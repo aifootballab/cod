@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Chrome, Gamepad2, Mail, Lock, User, Eye, EyeOff, Loader2, Crosshair } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -8,7 +7,6 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
-  const { t } = useTranslation();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
