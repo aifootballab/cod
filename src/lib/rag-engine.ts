@@ -486,7 +486,7 @@ function generateRecommendations(
   const recs: Recommendation[] = [];
   
   // 1. Raccomanda prossima arma basata su persona
-  const nextWeapon = suggestNextWeapon(persona, weaponAnalysis, stats);
+  const nextWeapon = suggestNextWeapon(persona, weaponAnalysis, _stats);
   recs.push({
     type: 'weapon',
     title: `Prova ${nextWeapon.name}`,
