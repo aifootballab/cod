@@ -13,7 +13,7 @@ import { useAnalysis } from '@/hooks/useAnalysis';
 import { weaponBuilds } from '@/data/weaponDatabase';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { supabase } from '@/lib/supabase';
-import { Crosshair, Menu, X, User, LogOut } from 'lucide-react';
+import { Crosshair, Menu, X, User, LogOut, Zap } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
 type View = 'home' | 'analyze' | 'builds' | 'leaderboard' | 'profile' | 'settings';
@@ -27,6 +27,7 @@ function App() {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<{ username: string; rank: string } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [heroPoints, setHeroPoints] = useState<number>(0);
   
   const { analysis, isAnalyzing, progress, error, getStageText, startAnalysis, resetAnalysis } = useAnalysis({ userId: user?.id });
 
@@ -37,12 +38,20 @@ function App() {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        const { data } = await supabase
+        const { data: profileData } = await supabase
           .from('profiles')
           .select('username, rank')
           .eq('id', session.user.id)
           .single();
-        setProfile(data);
+        setProfile(profileData);
+        
+        // Fetch Hero Points
+        const { data: creditsData } = await supabase
+          .from('user_credits')
+          .select('balance')
+          .eq('user_id', session.user.id)
+          .single();
+        setHeroPoints(creditsData?.balance || 0);
       }
       setAuthChecked(true);
     };
@@ -69,7 +78,7 @@ function App() {
 
   // Show login page if not authenticated
   if (!user) {
-    return <LoginPage onLogin={() => {}} />;
+    return <LoginPage onLogin={() => setCurrentView('home')} />;
   }
 
   const scrollToUpload = () => {
@@ -191,6 +200,17 @@ function App() {
               
               {user ? (
                 <div className="flex items-center gap-2">
+                  {/* Hero Points Badge */}
+                  <button
+                    onClick={() => setCurrentView('settings')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-500/10 border border-orange-500/30 text-orange-400 hover:bg-orange-500/20 hover:border-orange-500/50 transition-all"
+                    title="Hero Points"
+                  >
+                    <Zap className="w-4 h-4 fill-orange-500" />
+                    <span className="text-sm font-bold font-mono">{heroPoints.toLocaleString()}</span>
+                    <span className="text-xs font-mono text-orange-500/70 hidden sm:inline">HP</span>
+                  </button>
+                  
                   <button
                     onClick={() => setCurrentView('profile')}
                     className={`flex items-center gap-2 px-3 py-1 border ${
