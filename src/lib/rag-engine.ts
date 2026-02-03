@@ -478,9 +478,9 @@ function predictChurn(stats: PlayerStats, engagement: number): number {
 
 function generateRecommendations(
   persona: string,
-  skillTier: string,
+  _skillTier: string,
   weaponAnalysis: WeaponAnalysis,
-  stats: PlayerStats,
+  _stats: PlayerStats,
   detectedWeapons: DetectedWeapon[]
 ): Recommendation[] {
   const recs: Recommendation[] = [];
@@ -525,7 +525,7 @@ function generateRecommendations(
 function suggestNextWeapon(
   persona: string,
   weaponAnalysis: WeaponAnalysis,
-  stats: PlayerStats
+  _stats: PlayerStats
 ): WeaponKnowledge {
   // Logica di raccomandazione basata su persona
   const candidates = WEAPON_KNOWLEDGE_BASE.filter(w => 

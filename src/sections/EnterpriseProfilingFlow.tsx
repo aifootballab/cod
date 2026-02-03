@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Upload, Target, User, Zap, ChevronRight, AlertTriangle, CheckCircle2, Brain } from 'lucide-react';
+import { Upload, Target, User, Zap, AlertTriangle, CheckCircle2, Brain } from 'lucide-react';
 import { recognizeWeaponAndRetrieve, generatePlayerProfile, type PlayerProfile, type DetectedWeapon } from '@/lib/rag-engine';
 import type { PlayerStats } from '@/types';
 
@@ -27,7 +27,7 @@ export function EnterpriseProfilingFlow() {
   const [playerProfile, setPlayerProfile] = useState<PlayerProfile | null>(null);
   
   // Upload handlers
-  const handleProfileUpload = async (file: File) => {
+  const handleProfileUpload = async (_file: File) => {
     setIsAnalyzing(true);
     setError(null);
     
@@ -342,7 +342,7 @@ function WeaponsUploadStep({
   );
 }
 
-function AnalysisStep({ progress }: { progress: number }) {
+function AnalysisStep({ _progress }: { _progress: number }) {
   return (
     <div className="text-center py-12">
       <div className="relative w-32 h-32 mx-auto mb-8">
@@ -458,7 +458,7 @@ function ResultsStep({
       </div>
       
       {/* Actions */}
-      <div class="flex gap-4">
+      <div className="flex gap-4">
         <button
           onClick={onReset}
           className="flex-1 py-4 border border-gray-700 text-gray-400 font-mono hover:border-orange-500 hover:text-orange-500 transition-colors"
