@@ -6,6 +6,7 @@ import { UploadSection } from '@/sections/UploadSection';
 import { ResultsSection } from '@/sections/ResultsSection';
 import { LeaderboardSection } from '@/sections/LeaderboardSection';
 import { ProfileSection } from '@/sections/ProfileSection';
+import { ProfileSettings } from '@/sections/ProfileSettings';
 import { BuildsSection } from '@/sections/BuildsSection';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { weaponBuilds } from '@/data/weaponDatabase';
@@ -14,7 +15,7 @@ import { supabase } from '@/lib/supabase';
 import { Crosshair, Menu, X, User, LogOut } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
-type View = 'home' | 'analyze' | 'builds' | 'leaderboard' | 'profile';
+type View = 'home' | 'analyze' | 'builds' | 'leaderboard' | 'profile' | 'settings';
 
 function App() {
   const { t } = useTranslation();
@@ -114,6 +115,8 @@ function App() {
         return <LeaderboardSection />;
       case 'profile':
         return <ProfileSection user={user} profile={profile} />;
+      case 'settings':
+        return <ProfileSettings user={user} />;
       default:
         return null;
     }
@@ -214,6 +217,7 @@ function App() {
                 { id: 'builds', label: t('nav.builds') },
                 { id: 'leaderboard', label: t('nav.leaderboard') },
                 { id: 'profile', label: t('nav.profile') },
+                { id: 'settings', label: 'SETTINGS' },
               ].map((item) => (
                 <button
                   key={item.id}
