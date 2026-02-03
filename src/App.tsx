@@ -143,7 +143,7 @@ function App() {
       case 'leaderboard':
         return <LeaderboardSection />;
       case 'profile':
-        return <ProfileSection user={user} profile={profile} />;
+        return <ProfileSection user={user} profile={profile} onStartAnalysis={scrollToUpload} />;
       case 'settings':
         return <ProfileSettings user={user} />;
       default:
