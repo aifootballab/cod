@@ -512,11 +512,11 @@ function generateRecommendations(
   }
   
   // 3. Content suggestion basata su persona
-  const contentRec = getContentRecommendation(persona, stats);
+  const contentRec = getContentRecommendation(persona, _stats);
   if (contentRec) recs.push(contentRec);
   
   // 4. Tip personalizzato
-  const tip = getPersonalizedTip(stats, weaponAnalysis);
+  const tip = getPersonalizedTip(_stats, weaponAnalysis);
   if (tip) recs.push(tip);
   
   return recs;
@@ -558,8 +558,8 @@ function suggestNextWeapon(
     }
     
     // Preferisci armi dello stesso tier di skill
-    if (stats.kd_ratio > 1.5 && w.meta_tier === 'S') score += 20;
-    if (stats.kd_ratio < 1.0 && w.meta_tier !== 'S') score += 20;
+    if (_stats.kd_ratio > 1.5 && w.meta_tier === 'S') score += 20;
+    if (_stats.kd_ratio < 1.0 && w.meta_tier !== 'S') score += 20;
     
     return { weapon: w, score };
   });

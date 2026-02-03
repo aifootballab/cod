@@ -190,7 +190,7 @@ export function EnterpriseProfilingFlow() {
           )}
           
           {currentStep === 'analysis' && (
-            <AnalysisStep progress={detectedWeapons.length} />
+            <AnalysisStep />
           )}
           
           {currentStep === 'results' && playerProfile && (
@@ -342,7 +342,7 @@ function WeaponsUploadStep({
   );
 }
 
-function AnalysisStep({ _progress }: { _progress: number }) {
+function AnalysisStep() {
   return (
     <div className="text-center py-12">
       <div className="relative w-32 h-32 mx-auto mb-8">
