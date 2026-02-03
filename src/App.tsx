@@ -8,10 +8,10 @@ import { LeaderboardSection } from '@/sections/LeaderboardSection';
 import { ProfileSection } from '@/sections/ProfileSection';
 import { ProfileSettings } from '@/sections/ProfileSettings';
 import { BuildsSection } from '@/sections/BuildsSection';
+import { LoginPage } from '@/sections/LoginPage';
 import { useAnalysis } from '@/hooks/useAnalysis';
 import { weaponBuilds } from '@/data/weaponDatabase';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
-import { AuthModal } from '@/components/AuthModal';
 import { supabase } from '@/lib/supabase';
 import { Crosshair, Menu, X, User, LogOut } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
@@ -26,8 +26,7 @@ function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [profile, setProfile] = useState<{ username: string; rank: string } | null>(null);
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+  const [authChecked, setAuthChecked] = useState(false);
   
   const { analysis, isAnalyzing, progress, error, getStageText, startAnalysis, resetAnalysis } = useAnalysis({ userId: user?.id });
 
@@ -45,6 +44,7 @@ function App() {
           .single();
         setProfile(data);
       }
+      setAuthChecked(true);
     };
     checkAuth();
 
@@ -54,6 +54,23 @@ function App() {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Show loading while checking auth
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+          <span className="text-orange-500 font-mono tracking-wider">LOADING...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show login page if not authenticated
+  if (!user) {
+    return <LoginPage onLogin={() => {}} />;
+  }
 
   const scrollToUpload = () => {
     setCurrentView('analyze');
@@ -192,28 +209,7 @@ function App() {
                     <LogOut className="w-4 h-4" />
                   </button>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setAuthModalMode('login');
-                      setAuthModalOpen(true);
-                    }}
-                    className="px-4 py-2 border border-gray-700 text-gray-400 hover:border-orange-500 hover:text-orange-500 transition-all font-mono text-sm tracking-wider"
-                  >
-                    {t('nav.login') || 'LOGIN'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAuthModalMode('signup');
-                      setAuthModalOpen(true);
-                    }}
-                    className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-black font-bold transition-all font-mono text-sm tracking-wider"
-                  >
-                    {t('nav.signup') || 'REGISTRATI'}
-                  </button>
-                </div>
-              )}
+              ) : null}
               
               {/* Mobile Menu Button */}
               <button 
@@ -283,13 +279,6 @@ function App() {
           </div>
         </div>
       </footer>
-
-      {/* Auth Modal */}
-      <AuthModal 
-        isOpen={authModalOpen} 
-        onClose={() => setAuthModalOpen(false)} 
-        defaultMode={authModalMode}
-      />
 
       {/* Import fonts */}
       <style>{`
