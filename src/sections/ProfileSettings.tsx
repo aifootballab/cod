@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { 
   User, Settings, CreditCard, History, Award, Camera, 
   Zap, Shield, Crown, Star, TrendingUp, Package, 
-  CheckCircle, AlertCircle, ChevronRight, Wallet
+  CheckCircle, AlertCircle, ChevronRight, Wallet, Lock
 } from 'lucide-react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 
@@ -41,7 +41,7 @@ const AVATARS = [
 export function ProfileSettings({ user }: ProfileSettingsProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'credits' | 'avatar' | 'billing'>('overview');
   const [selectedAvatar, setSelectedAvatar] = useState('default');
-  const [isUploading, setIsUploading] = useState(false);
+  const [, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!user) {
