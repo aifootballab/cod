@@ -259,7 +259,7 @@ export function HeroSection({ onScrollToUpload, onNavigate, isAuthenticated }: H
             <div className="inline-flex items-center gap-2 px-4 py-2 border border-amber-500/40 bg-black/60 backdrop-blur-sm">
               <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
               <span className="text-amber-400 text-xs font-mono tracking-[0.2em]">
-                TACTICAL ANALYSIS SYSTEM
+                ADVANCED ANALYSIS SYSTEM
               </span>
             </div>
           </div>
@@ -389,7 +389,7 @@ export function HeroSection({ onScrollToUpload, onNavigate, isAuthenticated }: H
             </div>
             <div className="flex items-center gap-2 text-xs text-amber-500/60 font-mono">
               <ZapIcon className="w-4 h-4" />
-              <span>AI: GPT-4V</span>
+              <span>AI: NEURAL V2</span>
             </div>
           </div>
         </div>

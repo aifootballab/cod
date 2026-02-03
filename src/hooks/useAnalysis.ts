@@ -25,7 +25,7 @@ export function useAnalysis(options: UseAnalysisOptions = {}) {
       setStage('upload');
       setProgress(15);
       
-      // Stage 2: OCR with OpenAI (15-50%)
+      // Stage 2: OCR Analysis (15-50%)
       setStage('ocr');
       const reader = new FileReader();
       const imageBase64 = await new Promise<string>((resolve) => {
@@ -114,7 +114,7 @@ export function useAnalysis(options: UseAnalysisOptions = {}) {
   const getStageText = () => {
     switch (stage) {
       case 'upload': return 'UPLOADING...';
-      case 'ocr': return 'OCR ANALYSIS (GPT-4V)...';
+      case 'ocr': return 'OCR ANALYSIS...';
       case 'ai': return 'AI ANALYZING STATS...';
       case 'rag': return 'RAG SEARCHING BUILDS...';
       case 'save': return 'SAVING RESULTS...';

@@ -88,7 +88,7 @@ export async function recognizeWeaponAndRetrieve(
 }
 
 /**
- * OCR specifico per armi COD usando GPT-4 Vision
+ * OCR specifico per armi COD usando Vision AI
  */
 async function extractWeaponFromImage(imageBase64: string): Promise<{
   weaponName: string;

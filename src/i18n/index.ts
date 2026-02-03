@@ -42,7 +42,7 @@ const resources = {
         },
         stages: {
           upload: 'UPLOADING...',
-          ocr: 'OCR ANALYSIS (GPT-4V)...',
+          ocr: 'OCR ANALYSIS...',
           ai: 'AI ANALYZING STATS...',
           rag: 'RAG SEARCHING BUILDS...',
           save: 'SAVING RESULTS...',
@@ -201,7 +201,7 @@ const resources = {
         },
         stages: {
           upload: 'UPLOADING...',
-          ocr: 'OCR ANALYSIS (GPT-4V)...',
+          ocr: 'OCR ANALYSIS...',
           ai: 'AI ANALYZING STATS...',
           rag: 'RAG SEARCHING BUILDS...',
           save: 'SAVING RESULTS...',

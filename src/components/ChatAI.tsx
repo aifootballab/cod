@@ -81,7 +81,7 @@ export function ChatAI({ playerStats }: ChatAIProps) {
       return;
     }
 
-    // Real OpenAI API call
+    // Real AI API call
     try {
       const systemPrompt = `Sei un coach esperto di Call of Duty. Dai consigli concetti e pratici.
 ${playerStats ? `Il giocatore ha: K/D ${playerStats.kd_ratio}, Accuracy ${playerStats.accuracy}%, SPM ${playerStats.spm}, Best Weapon: ${playerStats.best_weapon}` : ''}
