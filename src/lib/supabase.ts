@@ -4,12 +4,16 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Fallback hardcoded per Vercel env vars issue
+const FALLBACK_URL = 'https://abdwvtoitxddtjcpbwky.supabase.co';
+const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiZHd2dG9pdHhkZHRqY3Bid2t5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MDY4NTg0MDAsImV4cCI6MjAyMjQzNDQwMH0.XVJxBq_M8mvYhZyIYzL82kNqyJXIe0q8GI8YWG0s4IY';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || FALLBACK_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || FALLBACK_KEY;
 
 export const supabase = createClient(
-  supabaseUrl || '',
-  supabaseAnonKey || '',
+  supabaseUrl,
+  supabaseAnonKey,
   {
     auth: {
       autoRefreshToken: true,
