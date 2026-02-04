@@ -16,6 +16,7 @@ import {
 import type { Crosshair } from '@/types/aim-trainer';
 import { useAimTrainer } from '@/hooks/useAimTrainer';
 import { useAimTelemetry } from '@/hooks/useAimTelemetry';
+import { useAudio } from '@/hooks/useAudio';
 import { GameState, DEFAULT_CONFIG, type JoystickData } from '@/types/aim-trainer';
 import { generateAIAnalysis } from '@/services/ai-analysis';
 import type { AIAnalysisResult } from '@/types/aim-analytics';
@@ -83,6 +84,14 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
   const telemetry = useAimTelemetry();
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysisResult | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  
+  // Visual effects state
+  const [hitEffects, setHitEffects] = useState<Array<{id: string; x: number; y: number; timestamp: number}>>([]);
+  const [damageNumbers, setDamageNumbers] = useState<Array<{id: string; x: number; y: number; value: number; timestamp: number}>>([]);
+  const [screenShake, setScreenShake] = useState(0);
+  
+  // Audio
+  const audio = useAudio();
 
   // Track crosshair position for telemetry during gameplay
   useEffect(() => {
@@ -238,6 +247,53 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
         ctx.stroke();
       });
 
+      // Render damage numbers (+100)
+      damageNumbers.forEach(dmg => {
+        const age = Date.now() - dmg.timestamp;
+        const progress = age / 800;
+        const yOffset = -progress * 50; // Float up
+        const alpha = 1 - progress;
+        const scale = 1 + progress * 0.5;
+        
+        ctx.save();
+        ctx.translate(dmg.x, dmg.y + yOffset);
+        ctx.scale(scale, scale);
+        
+        // Glow effect
+        ctx.shadowColor = '#fbbf24';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = `rgba(251, 191, 36, ${alpha})`;
+        ctx.font = 'bold 20px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`+${dmg.value}`, 0, 0);
+        
+        ctx.restore();
+      });
+
+      // Render hit effects (X mark like COD)
+      hitEffects.forEach(effect => {
+        const age = Date.now() - effect.timestamp;
+        const progress = age / 500; // 500ms duration
+        const size = 20 + progress * 30;
+        const alpha = 1 - progress;
+        
+        ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.lineWidth = 3;
+        
+        // X mark
+        ctx.beginPath();
+        ctx.moveTo(effect.x - size/2, effect.y - size/2);
+        ctx.lineTo(effect.x + size/2, effect.y + size/2);
+        ctx.moveTo(effect.x + size/2, effect.y - size/2);
+        ctx.lineTo(effect.x - size/2, effect.y + size/2);
+        ctx.stroke();
+        
+        // Hit marker text "HIT"
+        ctx.fillStyle = `rgba(255, 200, 0, ${alpha})`;
+        ctx.font = 'bold 12px monospace';
+        ctx.fillText('HIT', effect.x - 15, effect.y - size/2 - 5);
+      });
+
       // Render crosshair con effetti
       renderCrosshair(ctx, crosshair, timestamp);
       
@@ -249,7 +305,7 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
     return () => {
       cancelAnimationFrame(animationRef.current);
     };
-  }, [targets, crosshair, dimensions]);
+  }, [targets, crosshair, dimensions, hitEffects, damageNumbers]);
 
   const renderCrosshair = (ctx: CanvasRenderingContext2D, cross: Crosshair, timestamp: number) => {
     const { x, y, size, color } = cross;
@@ -346,36 +402,74 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
     ctx.stroke();
   };
 
-  // Handle shoot with telemetry
+  // Handle shoot with telemetry, audio and effects
   const handleShoot = useCallback(() => {
     const result = actions.shoot();
     
-    // Registra telemetria dello sparo
-    if (result && gameState === GameState.PLAYING) {
-      // Trova il bersaglio più vicino al mirino
-      let targetX = crosshair.x;
-      let targetY = crosshair.y;
-      
-      if (result.hit && result.targetId) {
-        const target = targets.find(t => t.id === result.targetId);
-        if (target) {
-          targetX = target.x;
-          targetY = target.y;
-        }
+    if (!result || gameState !== GameState.PLAYING) return;
+    
+    // Audio feedback
+    audio.playShootSound();
+    
+    // Screen shake effect
+    setScreenShake(5);
+    setTimeout(() => setScreenShake(0), 100);
+    
+    // Trova il bersaglio più vicino al mirino
+    let targetX = crosshair.x;
+    let targetY = crosshair.y;
+    
+    if (result.hit && result.targetId) {
+      const target = targets.find(t => t.id === result.targetId);
+      if (target) {
+        targetX = target.x;
+        targetY = target.y;
+        
+        // Hit sound and effect
+        audio.playHitSound();
+        
+        // Hit marker effect
+        const newEffect = {
+          id: `hit-${Date.now()}`,
+          x: target.x,
+          y: target.y,
+          timestamp: Date.now(),
+        };
+        setHitEffects(prev => [...prev, newEffect]);
+        
+        // Damage number (+100)
+        const damageNum = {
+          id: `dmg-${Date.now()}`,
+          x: target.x,
+          y: target.y - 30,
+          value: 100,
+          timestamp: Date.now(),
+        };
+        setDamageNumbers(prev => [...prev, damageNum]);
+        
+        // Remove old effects
+        setTimeout(() => {
+          setHitEffects(prev => prev.filter(e => e.id !== newEffect.id));
+          setDamageNumbers(prev => prev.filter(d => d.id !== damageNum.id));
+        }, 800);
       }
-      
-      telemetry.recordShot(
-        targetX,
-        targetY,
-        crosshair.x,
-        crosshair.y,
-        result.reactionTime,
-        result.hit,
-        dimensions.width,
-        dimensions.height
-      );
+    } else {
+      // Miss sound
+      audio.playMissSound();
     }
-  }, [actions, gameState, crosshair, targets, telemetry, dimensions]);
+    
+    // Registra telemetria
+    telemetry.recordShot(
+      targetX,
+      targetY,
+      crosshair.x,
+      crosshair.y,
+      result.reactionTime,
+      result.hit,
+      dimensions.width,
+      dimensions.height
+    );
+  }, [actions, gameState, crosshair, targets, telemetry, dimensions, audio]);
 
   const handleCanvasClick = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
@@ -523,16 +617,23 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
             <div className="absolute bottom-0 left-0 w-6 h-6 md:w-8 md:h-8 border-b-4 border-l-4 border-amber-600 z-10" />
             <div className="absolute bottom-0 right-0 w-6 h-6 md:w-8 md:h-8 border-b-4 border-r-4 border-amber-600 z-10" />
 
-            {/* Canvas */}
-            <canvas
-              ref={canvasRef}
-              width={dimensions.width}
-              height={dimensions.height}
-              onClick={handleCanvasClick}
-              onTouchStart={handleCanvasClick}
-              className="block mx-auto cursor-crosshair touch-none"
-              style={{ maxWidth: '100%', height: 'auto' }}
-            />
+            {/* Canvas with screen shake */}
+            <div 
+              style={{
+                transform: screenShake > 0 ? `translate(${Math.random() * screenShake - screenShake/2}px, ${Math.random() * screenShake - screenShake/2}px)` : 'none',
+                transition: 'transform 0.05s'
+              }}
+            >
+              <canvas
+                ref={canvasRef}
+                width={dimensions.width}
+                height={dimensions.height}
+                onClick={handleCanvasClick}
+                onTouchStart={handleCanvasClick}
+                className="block mx-auto cursor-crosshair touch-none"
+                style={{ maxWidth: '100%', height: 'auto' }}
+              />
+            </div>
 
             {/* Joystick - solo durante il gioco */}
             {gameState === GameState.PLAYING && (
@@ -547,24 +648,29 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
               </div>
             )}
 
-            {/* Fire button - solo durante il gioco */}
+            {/* Fire button - COD Style */}
             {gameState === GameState.PLAYING && (
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
-                  actions.shoot();
+                  handleShoot();
                 }}
                 onTouchStart={(e) => {
                   e.stopPropagation();
                   e.preventDefault();
-                  actions.shoot();
+                  handleShoot();
                 }}
-                className="absolute bottom-6 right-6 w-20 h-20 md:w-28 md:h-28 rounded-full bg-red-600/20 border-4 border-red-600/60 flex items-center justify-center active:scale-95 active:bg-red-600/40 transition-all z-20 shadow-lg shadow-red-600/20"
+                className="absolute bottom-6 right-6 w-24 h-24 md:w-32 md:h-32 rounded-full bg-gradient-to-br from-red-600 to-red-800 border-4 border-red-500 flex items-center justify-center active:scale-90 active:bg-red-900 transition-all z-20 shadow-2xl shadow-red-600/50"
+                style={{
+                  boxShadow: '0 0 30px rgba(220, 38, 38, 0.5), inset 0 0 20px rgba(0,0,0,0.3)'
+                }}
               >
                 <div className="text-center">
-                  <Target className="w-6 h-6 md:w-8 md:h-8 mx-auto text-red-500" />
-                  <span className="text-[10px] md:text-xs text-red-400 uppercase font-bold mt-1 block">SPARA</span>
+                  <div className="text-2xl md:text-3xl font-black text-white drop-shadow-lg">🔥</div>
+                  <span className="text-[10px] md:text-xs text-white uppercase font-black mt-1 block tracking-wider">FIRE</span>
                 </div>
+                {/* Pulsing ring */}
+                <div className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping" />
               </button>
             )}
 
