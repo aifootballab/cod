@@ -92,6 +92,49 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
   
   // Audio
   const audio = useAudio();
+  
+  // Input mode detection
+  const [inputMode, setInputMode] = useState<'mouse' | 'gamepad' | 'touch'>('mouse');
+  const [isMouseCaptured, setIsMouseCaptured] = useState(false);
+  const gamepadRef = useRef<Gamepad | null>(null);
+  const mousePosRef = useRef({ x: dimensions.width / 2, y: dimensions.height / 2 });
+
+  // Detect input mode
+  useEffect(() => {
+    if (isMobile) {
+      setInputMode('touch');
+      return;
+    }
+    
+    // Check for gamepad
+    const checkGamepad = () => {
+      const gamepads = navigator.getGamepads();
+      for (const gp of gamepads) {
+        if (gp) {
+          gamepadRef.current = gp;
+          setInputMode('gamepad');
+          return;
+        }
+      }
+      // No gamepad, use mouse
+      if (inputMode !== 'mouse') {
+        setInputMode('mouse');
+      }
+    };
+    
+    checkGamepad();
+    const interval = setInterval(checkGamepad, 1000);
+    
+    window.addEventListener('gamepadconnected', () => {
+      setInputMode('gamepad');
+    });
+    
+    window.addEventListener('gamepaddisconnected', () => {
+      setInputMode('mouse');
+    });
+    
+    return () => clearInterval(interval);
+  }, [isMobile]);
 
   // Track crosshair position for telemetry during gameplay
   useEffect(() => {
@@ -122,18 +165,128 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
     }
   }, [gameState, telemetry, aiAnalysis]);
 
-  // Setup joystick con opzioni ottimizzate per mobile
+  // MOUSE INPUT (Desktop)
   useEffect(() => {
-    if (!joystickRef.current || gameState !== GameState.PLAYING) return;
+    if (inputMode !== 'mouse' || gameState !== GameState.PLAYING) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    // Pointer lock for FPS-style aiming
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isMouseCaptured) return;
+      
+      const sensitivity = config.sensitivity * 2; // Adjust for mouse
+      mousePosRef.current.x += e.movementX * sensitivity * 0.5;
+      mousePosRef.current.y += e.movementY * sensitivity * 0.5;
+      
+      // Clamp to canvas
+      mousePosRef.current.x = Math.max(0, Math.min(dimensions.width, mousePosRef.current.x));
+      mousePosRef.current.y = Math.max(0, Math.min(dimensions.height, mousePosRef.current.y));
+      
+      // Move crosshair directly
+      actions.moveCrosshair({
+        angle: 0,
+        force: 1,
+        vector: { x: e.movementX * sensitivity * 0.01, y: e.movementY * sensitivity * 0.01 }
+      });
+    };
+    
+    const handleClick = () => {
+      if (!isMouseCaptured) {
+        canvas.requestPointerLock();
+      } else {
+        handleShoot();
+      }
+    };
+    
+    const handlePointerLockChange = () => {
+      setIsMouseCaptured(document.pointerLockElement === canvas);
+    };
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        handleShoot();
+      }
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('click', handleClick);
+    document.addEventListener('pointerlockchange', handlePointerLockChange);
+    document.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('click', handleClick);
+      document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      document.removeEventListener('keydown', handleKeyDown);
+      if (document.pointerLockElement === canvas) {
+        document.exitPointerLock();
+      }
+    };
+  }, [inputMode, gameState, isMouseCaptured, actions, config.sensitivity]);
+
+  // GAMEPAD INPUT
+  useEffect(() => {
+    if (inputMode !== 'gamepad' || gameState !== GameState.PLAYING) return;
+    
+    let animationId: number;
+    
+    const pollGamepad = () => {
+      const gamepads = navigator.getGamepads();
+      const gp = gamepads[0]; // First gamepad
+      
+      if (gp) {
+        // Right stick for aiming (axes 2 and 3)
+        const rightX = gp.axes[2] || 0;
+        const rightY = gp.axes[3] || 0;
+        
+        // Deadzone
+        const deadzone = 0.15;
+        const magnitude = Math.sqrt(rightX * rightX + rightY * rightY);
+        
+        if (magnitude > deadzone) {
+          const joystickData: JoystickData = {
+            angle: Math.atan2(-rightY, rightX) * 180 / Math.PI,
+            force: Math.min(magnitude, 1),
+            vector: { 
+              x: (Math.abs(rightX) > deadzone ? rightX : 0), 
+              y: (Math.abs(rightY) > deadzone ? rightY : 0) 
+            },
+          };
+          
+          actions.moveCrosshair(joystickData);
+        }
+        
+        // Right trigger (RT) to shoot (button 7 usually)
+        // or Right shoulder (R1) button 5
+        if (gp.buttons[7].pressed || gp.buttons[5].pressed) {
+          handleShoot();
+        }
+      }
+      
+      animationId = requestAnimationFrame(pollGamepad);
+    };
+    
+    animationId = requestAnimationFrame(pollGamepad);
+    
+    return () => {
+      cancelAnimationFrame(animationId);
+    };
+  }, [inputMode, gameState, actions]);
+
+  // TOUCH INPUT (Joystick - Mobile only)
+  useEffect(() => {
+    if (inputMode !== 'touch' || !joystickRef.current || gameState !== GameState.PLAYING) return;
 
     const joystick = nipplejs.create({
       zone: joystickRef.current,
       mode: 'static',
       position: { left: '50%', top: '50%' },
       color: 'rgba(245, 158, 11, 0.9)',
-      size: isMobile ? 100 : 140,
+      size: 100,
       fadeTime: 0,
-      threshold: 0.1, // Più sensibile
+      threshold: 0.1,
       lockX: false,
       lockY: false,
     });
@@ -156,14 +309,10 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
       actions.moveCrosshair(joystickData);
     });
 
-    joystick.on('end', () => {
-      // Quando rilascia, il mirino si ferma (non serve fare nulla, il vector diventa 0)
-    });
-
     return () => {
       joystick.destroy();
     };
-  }, [gameState, actions, isMobile, sensitivity]);
+  }, [inputMode, gameState, actions, sensitivity]);
 
   // Canvas rendering con animazione smooth
   useEffect(() => {
@@ -635,21 +784,35 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
               />
             </div>
 
-            {/* Joystick - solo durante il gioco */}
+            {/* Input Mode Indicator */}
             {gameState === GameState.PLAYING && (
+              <div className="absolute top-4 left-4 bg-black/70 px-3 py-1 rounded border border-amber-600/50">
+                <span className="text-xs text-amber-500 uppercase font-bold">
+                  {inputMode === 'mouse' && '🖱️ MOUSE'}
+                  {inputMode === 'gamepad' && '🎮 CONTROLLER'}
+                  {inputMode === 'touch' && '👆 TOUCH'}
+                </span>
+                {inputMode === 'mouse' && !isMouseCaptured && (
+                  <span className="text-[10px] text-white ml-2 animate-pulse">CLICCA PER INIZIARE</span>
+                )}
+              </div>
+            )}
+
+            {/* Joystick - SOLO su touch/mobile */}
+            {gameState === GameState.PLAYING && inputMode === 'touch' && (
               <div className="absolute bottom-4 left-4 w-24 h-24 md:w-36 md:h-36 pointer-events-auto">
                 <div 
                   ref={joystickRef}
                   className="w-full h-full rounded-full bg-amber-600/10 border-2 border-amber-600/50 backdrop-blur"
                 />
                 <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[10px] text-amber-500/60 uppercase tracking-wider whitespace-nowrap">
-                  Movimento
+                  Mirare
                 </div>
               </div>
             )}
 
-            {/* Fire button - COD Style */}
-            {gameState === GameState.PLAYING && (
+            {/* Fire button - SOLO su touch */}
+            {gameState === GameState.PLAYING && inputMode === 'touch' && (
               <button 
                 onClick={(e) => {
                   e.stopPropagation();
@@ -669,9 +832,32 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
                   <div className="text-2xl md:text-3xl font-black text-white drop-shadow-lg">🔥</div>
                   <span className="text-[10px] md:text-xs text-white uppercase font-black mt-1 block tracking-wider">FIRE</span>
                 </div>
-                {/* Pulsing ring */}
                 <div className="absolute inset-0 rounded-full border-2 border-white/30 animate-ping" />
               </button>
+            )}
+            
+            {/* Desktop controls hint */}
+            {gameState === GameState.PLAYING && inputMode === 'mouse' && (
+              <div className="absolute bottom-4 left-4 right-4 flex justify-center gap-8 text-xs text-zinc-500 pointer-events-none">
+                <div className="bg-black/50 px-3 py-2 rounded border border-zinc-700">
+                  <span className="text-amber-500 font-bold">MOUSE</span> per mirare
+                </div>
+                <div className="bg-black/50 px-3 py-2 rounded border border-zinc-700">
+                  <span className="text-amber-500 font-bold">CLICK</span> o <span className="text-amber-500 font-bold">SPAZIO</span> per sparare
+                </div>
+              </div>
+            )}
+            
+            {/* Gamepad controls hint */}
+            {gameState === GameState.PLAYING && inputMode === 'gamepad' && (
+              <div className="absolute bottom-4 left-4 right-4 flex justify-center gap-8 text-xs text-zinc-500 pointer-events-none">
+                <div className="bg-black/50 px-3 py-2 rounded border border-zinc-700">
+                  <span className="text-amber-500 font-bold">STICK DX</span> per mirare
+                </div>
+                <div className="bg-black/50 px-3 py-2 rounded border border-zinc-700">
+                  <span className="text-amber-500 font-bold">RT</span> o <span className="text-amber-500 font-bold">R1</span> per sparare
+                </div>
+              </div>
             )}
 
             {/* Pause button */}
@@ -696,7 +882,9 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
                     <span className="text-orange-600">Tactical</span> Aim
                   </h2>
                   <p className="text-zinc-400 mb-6 text-sm md:text-base max-w-xs md:max-w-md mx-auto">
-                    Usa il joystick per muovere il mirino. Tocca il bottone rosso per sparare ai bersagli.
+                    {inputMode === 'touch' && 'Usa il joystick per mirare. Tocca il bottone rosso per sparare.'}
+                    {inputMode === 'mouse' && 'Muovi il MOUSE per mirare. Clicca o premi SPAZIO per sparare.'}
+                    {inputMode === 'gamepad' && 'Usa lo STICK DESTRO per mirare. Premi RT o R1 per sparare.'}
                   </p>
                   
                   <div className="grid grid-cols-2 gap-3 mb-6 text-xs text-zinc-500 max-w-xs mx-auto">
@@ -982,18 +1170,54 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
           {/* Controls hint - solo quando non si gioca */}
           {gameState !== GameState.PLAYING && gameState !== GameState.FINISHED && (
             <div className="mt-3 flex justify-center items-center gap-4 text-[10px] md:text-xs text-zinc-600">
-              <span className="flex items-center gap-2">
-                <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-amber-600/50 bg-amber-600/20 flex items-center justify-center">
-                  <span className="text-amber-500">●</span>
-                </div>
-                Joystick per mirare
-              </span>
-              <span className="flex items-center gap-2">
-                <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-red-600/50 bg-red-600/20 flex items-center justify-center">
-                  <Target className="w-3 h-3 md:w-4 md:h-4 text-red-500" />
-                </div>
-                Tocca per sparare
-              </span>
+              {inputMode === 'touch' && (
+                <>
+                  <span className="flex items-center gap-2">
+                    <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-amber-600/50 bg-amber-600/20 flex items-center justify-center">
+                      <span className="text-amber-500">●</span>
+                    </div>
+                    Joystick per mirare
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-red-600/50 bg-red-600/20 flex items-center justify-center">
+                      <Target className="w-3 h-3 md:w-4 md:h-4 text-red-500" />
+                    </div>
+                    Tocca per sparare
+                  </span>
+                </>
+              )}
+              {inputMode === 'mouse' && (
+                <>
+                  <span className="flex items-center gap-2">
+                    <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-amber-600/50 bg-amber-600/20 flex items-center justify-center">
+                      <span className="text-amber-500">🖱️</span>
+                    </div>
+                    Mouse per mirare
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-red-600/50 bg-red-600/20 flex items-center justify-center">
+                      <span className="text-red-500 text-xs font-bold">LMB</span>
+                    </div>
+                    Click o SPAZIO per sparare
+                  </span>
+                </>
+              )}
+              {inputMode === 'gamepad' && (
+                <>
+                  <span className="flex items-center gap-2">
+                    <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-amber-600/50 bg-amber-600/20 flex items-center justify-center">
+                      <span className="text-amber-500">🎮</span>
+                    </div>
+                    Stick DX per mirare
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <div className="w-6 h-6 md:w-8 md:h-8 rounded-full border border-red-600/50 bg-red-600/20 flex items-center justify-center">
+                      <span className="text-red-500 text-xs font-bold">RT</span>
+                    </div>
+                    RT/R1 per sparare
+                  </span>
+                </>
+              )}
             </div>
           )}
         </div>
