@@ -95,9 +95,7 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
   
   // Input mode detection
   const [inputMode, setInputMode] = useState<'mouse' | 'gamepad' | 'touch'>('mouse');
-  const [isMouseCaptured, setIsMouseCaptured] = useState(false);
   const gamepadRef = useRef<Gamepad | null>(null);
-  const mousePosRef = useRef({ x: dimensions.width / 2, y: dimensions.height / 2 });
 
   // Detect input mode
   useEffect(() => {
@@ -165,43 +163,28 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
     }
   }, [gameState, telemetry, aiAnalysis]);
 
-  // MOUSE INPUT (Desktop)
+  // MOUSE INPUT (Desktop) - Direct mouse tracking
   useEffect(() => {
     if (inputMode !== 'mouse' || gameState !== GameState.PLAYING) return;
     
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    // Pointer lock for FPS-style aiming
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isMouseCaptured) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
       
-      const sensitivity = config.sensitivity * 2; // Adjust for mouse
-      mousePosRef.current.x += e.movementX * sensitivity * 0.5;
-      mousePosRef.current.y += e.movementY * sensitivity * 0.5;
+      // Convert to canvas coordinates
+      const targetX = (x / rect.width) * dimensions.width;
+      const targetY = (y / rect.height) * dimensions.height;
       
-      // Clamp to canvas
-      mousePosRef.current.x = Math.max(0, Math.min(dimensions.width, mousePosRef.current.x));
-      mousePosRef.current.y = Math.max(0, Math.min(dimensions.height, mousePosRef.current.y));
-      
-      // Move crosshair directly
-      actions.moveCrosshair({
-        angle: 0,
-        force: 1,
-        vector: { x: e.movementX * sensitivity * 0.01, y: e.movementY * sensitivity * 0.01 }
-      });
+      // Set crosshair directly to mouse position
+      actions.setCrosshairPosition(targetX, targetY);
     };
     
     const handleClick = () => {
-      if (!isMouseCaptured) {
-        canvas.requestPointerLock();
-      } else {
-        handleShoot();
-      }
-    };
-    
-    const handlePointerLockChange = () => {
-      setIsMouseCaptured(document.pointerLockElement === canvas);
+      handleShoot();
     };
     
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -210,21 +193,16 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
       }
     };
     
-    document.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('click', handleClick);
-    document.addEventListener('pointerlockchange', handlePointerLockChange);
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mousedown', handleClick);
     document.addEventListener('keydown', handleKeyDown);
     
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      canvas.removeEventListener('click', handleClick);
-      document.removeEventListener('pointerlockchange', handlePointerLockChange);
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mousedown', handleClick);
       document.removeEventListener('keydown', handleKeyDown);
-      if (document.pointerLockElement === canvas) {
-        document.exitPointerLock();
-      }
     };
-  }, [inputMode, gameState, isMouseCaptured, actions, config.sensitivity]);
+  }, [inputMode, gameState, actions, dimensions]);
 
   // GAMEPAD INPUT
   useEffect(() => {
@@ -792,8 +770,8 @@ export function AimTrainerSection({ onBack }: AimTrainerSectionProps) {
                   {inputMode === 'gamepad' && '🎮 CONTROLLER'}
                   {inputMode === 'touch' && '👆 TOUCH'}
                 </span>
-                {inputMode === 'mouse' && !isMouseCaptured && (
-                  <span className="text-[10px] text-white ml-2 animate-pulse">CLICCA PER INIZIARE</span>
+                {inputMode === 'mouse' && (
+                  <span className="text-[10px] text-white ml-2">MUOVI IL MOUSE</span>
                 )}
               </div>
             )}

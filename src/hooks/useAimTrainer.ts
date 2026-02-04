@@ -26,6 +26,7 @@ interface AimTrainerActions {
   endGame: () => void;
   resetGame: () => void;
   moveCrosshair: (joystickData: JoystickData) => void;
+  setCrosshairPosition: (x: number, y: number) => void;
   shoot: () => ShotResult | null;
   spawnTarget: () => void;
   removeTarget: (targetId: string) => void;
@@ -199,6 +200,16 @@ export function useAimTrainer(
     });
   }, [gameState, config.sensitivity, canvasWidth, canvasHeight]);
 
+  const setCrosshairPosition = useCallback((x: number, y: number) => {
+    if (gameState !== GameState.PLAYING) return;
+    
+    setCrosshair(prev => ({
+      ...prev,
+      x: Math.max(prev.size, Math.min(canvasWidth - prev.size, x)),
+      y: Math.max(prev.size, Math.min(canvasHeight - prev.size, y)),
+    }));
+  }, [gameState, canvasWidth, canvasHeight]);
+
   const shoot = useCallback((): ShotResult | null => {
     if (gameState !== GameState.PLAYING) return null;
 
@@ -288,6 +299,7 @@ export function useAimTrainer(
     endGame,
     resetGame,
     moveCrosshair,
+    setCrosshairPosition,
     shoot,
     spawnTarget,
     removeTarget,
